@@ -1,0 +1,136 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { AuditAction, AuctionStatus } from "@prisma/client";
+
+import { requireAdmin } from "@/src/lib/auth";
+import { prisma } from "@/src/lib/prisma";
+import { createAdminAuditLog } from "@/src/lib/audit";
+
+export type AdminAuction = {
+  id: string;
+  title: string;
+  seller: {
+    id: string;
+    fullName: string;
+    avatarUrl: string | null;
+  };
+  status: AuctionStatus;
+  currentPrice: string;
+  endsAt: string | null;
+  createdAt: string;
+};
+
+export async function listAdminAuctions() {
+  await requireAdmin();
+
+  try {
+    const auctions = await prisma.auction.findMany({
+      where: {
+        deletedAt: null,
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: [{ status: "asc" }, { endsAt: "asc" }, { createdAt: "desc" }],
+    });
+
+    const data: AdminAuction[] = auctions.map((a) => ({
+      id: a.id,
+      title: a.title,
+      seller: a.seller,
+      status: a.status,
+      currentPrice: a.currentPrice.toString(),
+      endsAt: a.endsAt?.toISOString() ?? null,
+      createdAt: a.createdAt.toISOString(),
+    }));
+
+    return {
+      success: true,
+      data,
+    };
+  } catch (error) {
+    console.error("List admin auctions error:", error);
+    throw new Error("Không thể tải danh sách đấu giá");
+  }
+}
+
+export async function adminCancelAuction(auctionId: string) {
+  await requireAdmin();
+
+  if (!auctionId || typeof auctionId !== "string") {
+    throw new Error("Invalid auction ID");
+  }
+
+  const user = await requireAdmin();
+
+  try {
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+    });
+
+    if (!auction) {
+      throw new Error("Phiên đấu giá không tồn tại");
+    }
+
+    // Prevent cancelling ended or already cancelled auctions
+    if (auction.status === AuctionStatus.CANCELLED) {
+      throw new Error("Phiên đấu giá đã bị huỷ");
+    }
+
+    if (auction.status === AuctionStatus.COMPLETED) {
+      throw new Error("Phiên đấu giá đã kết thúc, không thể huỷ");
+    }
+
+    // Check if ended (no endsAt or in the past)
+    const now = new Date();
+    if (!auction.endsAt || auction.endsAt <= now) {
+      throw new Error("Phiên đấu giá đã kết thúc, không thể huỷ");
+    }
+
+    const previousStatus = auction.status;
+
+    const updatedAuction = await prisma.auction.update({
+      where: { id: auctionId },
+      data: {
+        status: AuctionStatus.CANCELLED,
+      },
+    });
+
+    // Create audit log
+    await createAdminAuditLog({
+      profileId: user.id,
+      action: AuditAction.AUCTION_CANCELLED,
+      resourceType: "auction",
+      resourceId: auctionId,
+      oldValues: {
+        status: previousStatus,
+      },
+      newValues: {
+        status: updatedAuction.status,
+      },
+    });
+
+    // Revalidate paths
+    revalidatePath("/admin/auctions");
+    revalidatePath("/auctions");
+    revalidatePath(`/auctions/${auctionId}`);
+
+    return {
+      success: true,
+      data: updatedAuction,
+    };
+  } catch (error) {
+    console.error("Admin cancel auction error:", error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Không thể huỷ phiên đấu giá");
+  }
+}

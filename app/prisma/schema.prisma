@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  SELLER
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum AuctionStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("auction_status")
+}
+
+enum BidStatus {
+  ACTIVE
+  WON
+  LOST
+  CANCELLED
+
+  @@map("bid_status")
+}
+
+enum NotificationType {
+  AUCTION_CREATED
+  AUCTION_ACTIVATED
+  AUCTION_ENDING_SOON
+  AUCTION_ENDED
+  BID_PLACED
+  BID_OUTBID
+  BID_WON
+  SYSTEM
+
+  @@map("notification_type")
+}
+
+enum AuditAction {
+  PROFILE_CREATED
+  PROFILE_UPDATED
+  AUCTION_CREATED
+  AUCTION_UPDATED
+  AUCTION_ACTIVATED
+  AUCTION_CANCELLED
+  AUCTION_COMPLETED
+  BID_PLACED
+  BID_CANCELLED
+  WATCHLIST_ADDED
+  WATCHLIST_REMOVED
+  NOTIFICATION_CREATED
+  ADMIN_ACTION
+
+  @@map("audit_action")
+}
+
+model Profile {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  fullName      String    @map("full_name") @db.VarChar(255)
+  phone         String?   @db.VarChar(20)
+  role          UserRole  @default(USER)
+  avatarUrl     String?   @map("avatar_url")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  auctionsAsSeller Auction[]      @relation("AuctionSeller")
+  auctionsAsWinner Auction[]      @relation("AuctionWinner")
+  bids             Bid[]
+  watchlistItems   Watchlist[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+
+  @@index([email], map: "idx_profiles_email")
+  @@index([role], map: "idx_profiles_role")
+  @@map("profiles")
+}
+
+model Auction {
+  id                    String        @id @default(uuid()) @db.Uuid
+  title                 String        @db.VarChar(255)
+  description           String
+  startPrice            BigInt        @map("start_price")
+  currentPrice          BigInt        @default(0) @map("current_price")
+  bidStep               BigInt        @default(10000) @map("bid_step")
+  durationMinutes       Int           @default(15) @map("duration_minutes")
+  autoExtensionEnabled  Boolean       @default(true) @map("auto_extension_enabled")
+  maxExtensions         Int           @default(3) @map("max_extensions")
+  currentExtensionCount Int           @default(0) @map("current_extension_count")
+  status                AuctionStatus @default(PENDING)
+  sellerId              String        @map("seller_id") @db.Uuid
+  winnerId              String?       @map("winner_id") @db.Uuid
+  startsAt              DateTime?     @map("starts_at") @db.Timestamptz(6)
+  endsAt                DateTime?     @map("ends_at") @db.Timestamptz(6)
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  seller         Profile        @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  winner         Profile?       @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  images         AuctionImage[]
+  bids           Bid[]
+  watchlistItems Watchlist[]
+  notifications  Notification[]
+
+  @@index([status, endsAt], map: "idx_auctions_status_ends_at")
+  @@index([sellerId, status], map: "idx_auctions_seller_id_status")
+  @@index([winnerId], map: "idx_auctions_winner_id")
+  @@map("auctions")
+}
+
+model AuctionImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  auctionId String   @map("auction_id") @db.Uuid
+  url       String
+  altText   String?  @map("alt_text")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId, sortOrder], map: "idx_auction_images_auction_id_sort_order")
+  @@map("auction_images")
+}
+
+model Bid {
+  id              String    @id @default(uuid()) @db.Uuid
+  auctionId       String    @map("auction_id") @db.Uuid
+  bidderId        String    @map("bidder_id") @db.Uuid
+  amount          BigInt
+  isAutoBid       Boolean   @default(false) @map("is_auto_bid")
+  autoBidMaxPrice BigInt?   @map("auto_bid_max_price")
+  status          BidStatus @default(ACTIVE)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  Profile @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+
+  @@index([auctionId, amount], map: "idx_bids_auction_id_amount")
+  @@index([bidderId, createdAt], map: "idx_bids_bidder_id_created_at")
+  @@index([status], map: "idx_bids_status")
+  @@map("bids")
+}
+
+model Watchlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @map("profile_id") @db.Uuid
+  auctionId String   @map("auction_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, auctionId], map: "uq_watchlist_profile_id_auction_id")
+  @@index([auctionId], map: "idx_watchlist_auction_id")
+  @@map("watchlist")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  profileId String           @map("profile_id") @db.Uuid
+  auctionId String?          @map("auction_id") @db.Uuid
+  type      NotificationType
+  title     String           @db.VarChar(255)
+  message   String
+  metadata  Json?
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  auction Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, readAt, createdAt], map: "idx_notifications_profile_id_read_at_created_at")
+  @@index([auctionId], map: "idx_notifications_auction_id")
+  @@index([type], map: "idx_notifications_type")
+  @@map("notifications")
+}
+
+model AuditLog {
+  id           String      @id @default(uuid()) @db.Uuid
+  profileId    String?     @map("profile_id") @db.Uuid
+  action       AuditAction
+  resourceType String      @map("resource_type") @db.VarChar(100)
+  resourceId   String      @map("resource_id") @db.Uuid
+  oldValues    Json?       @map("old_values")
+  newValues    Json?       @map("new_values")
+  ipAddress    String?     @map("ip_address") @db.Inet
+  userAgent    String?     @map("user_agent")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([profileId], map: "idx_audit_logs_profile_id")
+  @@index([resourceType, resourceId], map: "idx_audit_logs_resource_type_resource_id")
+  @@index([createdAt], map: "idx_audit_logs_created_at")
+  @@index([action], map: "idx_audit_logs_action")
+  @@map("audit_logs")
+}
