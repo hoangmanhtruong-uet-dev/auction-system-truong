@@ -33,21 +33,30 @@ export default function RegisterPage() {
 
     setIsSubmitting(true);
 
-    const result = await register({ email, password, fullName });
+    try {
+      const result = await register({ email, password, fullName });
 
-    if (!result.success) {
-      const errorMsg =
-        result.error && "_errors" in result.error
-          ? (result.error as { _errors: string[] })._errors[0]
-          : "Đăng ký thất bại";
+      if (!result.success) {
+        const errorMsg =
+          result.error && "_errors" in result.error
+            ? (result.error as { _errors: string[] })._errors[0]
+            : "Đăng ký thất bại";
+        setError(errorMsg);
+        toast.error(errorMsg);
+        setIsSubmitting(false);
+        return;
+      }
+
+      toast.success("Đăng ký thành công!");
+      router.replace("/");
+      router.refresh();
+    } catch (err) {
+      console.error("Register submit error:", err);
+      const errorMsg = "Không thể đăng ký. Vui lòng kiểm tra cấu hình server/database.";
       setError(errorMsg);
       toast.error(errorMsg);
       setIsSubmitting(false);
-      return;
     }
-
-    toast.success("Đăng ký thành công! Vui lòng kiểm tra email để xác thực.");
-    router.push("/auth/login");
   }
 
   return (
