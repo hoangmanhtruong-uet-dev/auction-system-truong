@@ -1,7 +1,10 @@
 import { prisma } from "@/src/lib/prisma";
-import { createServerSupabaseClient } from "@/src/lib/supabase-server";
+import { verifyToken } from "@/src/lib/jwt";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { UserRole } from "@prisma/client";
+
+export const AUTH_COOKIE_NAME = "auth-token";
 
 export type SafeUser = {
   id: string;
@@ -14,22 +17,28 @@ export type SafeUser = {
   createdAt: Date;
 };
 
+export async function getSessionUserId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+
+  if (!token) return null;
+
+  const payload = verifyToken(token);
+  return payload?.userId ?? null;
+}
+
 /**
- * Get the current authenticated user + profile from DB.
- * Always reads role from DB (never trusts the client).
+ * Get the current authenticated user + profile from Aiven PostgreSQL.
+ * Always reads role from DB (never trusts the client token role).
  */
 export async function getCurrentUser(): Promise<SafeUser | null> {
   try {
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const userId = await getSessionUserId();
 
-    if (!authUser) return null;
+    if (!userId) return null;
 
-    // Fetch profile from DB to get the real role
     const profile = await prisma.profile.findUnique({
-      where: { id: authUser.id },
+      where: { id: userId },
       select: {
         id: true,
         email: true,
@@ -82,34 +91,4 @@ export async function requireAdmin(): Promise<SafeUser> {
  */
 export async function requireSeller(): Promise<SafeUser> {
   return requireRole([UserRole.SELLER, UserRole.ADMIN]);
-}
-
-/**
- * Create or update profile after signup/signin.
- * This ensures a local DB profile exists for every Supabase auth user.
- */
-export async function syncProfile(
-  authUserId: string,
-  email: string,
-  fullName?: string | null
-): Promise<void> {
-  const existing = await prisma.profile.findUnique({
-    where: { id: authUserId },
-  });
-
-  if (!existing) {
-    await prisma.profile.create({
-      data: {
-        id: authUserId,
-        email,
-        fullName: fullName || email.split("@")[0],
-        role: UserRole.USER,
-      },
-    });
-  } else if (existing.email !== email) {
-    await prisma.profile.update({
-      where: { id: authUserId },
-      data: { email },
-    });
-  }
 }

@@ -7,6 +7,7 @@ import {
   PrismaClient,
   UserRole,
 } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -27,7 +28,10 @@ async function upsertProfile(data: {
   phone: string;
   role: UserRole;
   createdAt: Date;
+  passwordHash?: string;
 }) {
+  const passwordHash = data.passwordHash || await bcrypt.hash('password123', 12);
+  
   return prisma.profile.upsert({
     where: { email: data.email },
     update: {
@@ -35,8 +39,12 @@ async function upsertProfile(data: {
       fullName: data.fullName,
       phone: data.phone,
       role: data.role,
+      passwordHash,
     },
-    create: data,
+    create: {
+      ...data,
+      passwordHash,
+    },
   });
 }
 

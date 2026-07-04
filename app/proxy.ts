@@ -1,4 +1,4 @@
-import { updateSession } from "@/src/lib/supabase-middleware";
+import { updateSession } from "@/src/lib/auth-middleware";
 import { type NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

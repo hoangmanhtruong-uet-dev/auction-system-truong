@@ -67,7 +67,8 @@ enum AuditAction {
 model Profile {
   id            String    @id @default(uuid()) @db.Uuid
   email         String    @unique @db.VarChar(255)
-  emailVerified Boolean   @default(false) @map("email_verified")
+  passwordHash  String    @map("password_hash")
+  emailVerified Boolean   @default(true) @map("email_verified")
   fullName      String    @map("full_name") @db.VarChar(255)
   phone         String?   @db.VarChar(20)
   role          UserRole  @default(USER)

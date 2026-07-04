@@ -11,16 +11,15 @@ AutoBid.vn là MVP demo cho một nền tảng đấu giá online. Project tập
 - TypeScript
 - Tailwind CSS / shadcn UI
 - Prisma ORM
-- PostgreSQL / Supabase Database
-- Supabase Auth
+- Aiven PostgreSQL Database
+- Custom JWT-based Authentication
 - ESLint
 
 ## Yêu cầu môi trường
 
 - Node.js phiên bản phù hợp với Next.js 16
 - npm
-- PostgreSQL local hoặc Supabase PostgreSQL
-- Supabase project đã bật Auth
+- Aiven PostgreSQL database
 - Docker nếu muốn chạy PostgreSQL local bằng `docker-compose`
 
 ## Cài đặt dependencies
@@ -48,16 +47,14 @@ Copy-Item .env.example .env
 Các biến môi trường chính:
 
 ```env
-DATABASE_URL="postgresql://..."
-NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
-SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+DATABASE_URL="postgresql://avnadmin:your-password@your-aiven-host.aivencloud.com:12345/defaultdb?sslmode=require"
+JWT_SECRET="your-random-secret-key"
+JWT_EXPIRES_IN_SECONDS="604800"
 ```
 
 Ghi chú bảo mật:
 
-- `NEXT_PUBLIC_SUPABASE_URL` và `NEXT_PUBLIC_SUPABASE_ANON_KEY` được phép dùng phía client.
-- `DATABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY` là secret, chỉ dùng server-side, không commit và không expose ra browser.
+- `DATABASE_URL` và `JWT_SECRET` là secret, chỉ dùng server-side, không commit và không expose ra browser.
 - Không đưa `.env` lên git.
 
 ## Prisma generate / migrate / seed
@@ -119,7 +116,7 @@ app/
 ├── public/                 # Static assets
 ├── src/
 │   ├── actions/            # Server actions
-│   ├── lib/                # Auth, Prisma, Supabase, audit helpers
+│   ├── lib/                # Auth, Prisma, audit helpers
 │   └── types/              # Zod schemas and TypeScript types
 ├── proxy.ts                # Next.js proxy for auth/session/redirect handling
 ├── package.json
@@ -147,7 +144,7 @@ Route alias trong `proxy.ts`:
 
 ## Tính năng đã hoàn thành trong MVP
 
-- Auth cơ bản bằng Supabase Auth.
+- Auth cơ bản bằng JWT token-based authentication lưu trong httpOnly cookie.
 - Đồng bộ profile local trong PostgreSQL qua Prisma.
 - Role-based access cơ bản cho admin.
 - Auction listing lấy dữ liệu thật từ DB.
@@ -176,7 +173,7 @@ Route alias trong `proxy.ts`:
 - Chưa phù hợp cho giao dịch tiền thật.
 - Chưa có realtime bid/countdown qua websocket/realtime channel.
 - Chưa triển khai auto-bid/proxy bidding hoàn chỉnh.
-- Chưa có upload ảnh qua Supabase Storage; form hiện nhận URL ảnh.
+- Chưa có upload ảnh; form hiện nhận URL ảnh.
 - Chưa có workflow moderation/duyệt auction nâng cao.
 - Chưa có notification delivery thật qua email/push.
 - Chưa có rate limiting/anti-abuse production-grade.
@@ -214,10 +211,10 @@ Luồng cần kiểm tra:
 ## Ghi chú bảo mật
 
 - Không commit `.env` hoặc secret key.
-- Không expose `SUPABASE_SERVICE_ROLE_KEY` hoặc `DATABASE_URL` sang client.
+- Không expose `DATABASE_URL` hoặc `JWT_SECRET` sang client.
 - Không log PII/secrets trong client. Server logs hiện chỉ dùng cho lỗi kỹ thuật; cần tích hợp logger có redaction trước production.
 - Admin role phải luôn đọc từ DB/server, không tin dữ liệu client.
-- Cần bật RLS/policy Supabase phù hợp nếu truy cập trực tiếp Supabase từ client.
+- JWT token cần dùng secret đủ mạnh và chỉ lưu trong httpOnly cookie.
 - Cần thêm rate limit cho login, register, create auction và place bid trước production.
 - Cần security review cho transaction bid, authorization, upload file, audit log và admin actions.
 - Nếu bổ sung payment/wallet/escrow, cần kiểm tra compliance, reconciliation, fraud detection và dispute handling.

@@ -1,7 +1,12 @@
 "use server";
 
-import { createServerSupabaseClient } from "@/src/lib/supabase-server";
-import { syncProfile } from "@/src/lib/auth";
+import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
+import { UserRole } from "@prisma/client";
+
+import { prisma } from "@/src/lib/prisma";
+import { AUTH_COOKIE_NAME } from "@/src/lib/auth";
+import { generateToken } from "@/src/lib/jwt";
 
 import {
   LoginInput,
@@ -10,59 +15,85 @@ import {
   RegisterSchema,
 } from "@/src/types";
 
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+async function setAuthCookie(user: { id: string; email: string; role: UserRole }) {
+  const token = generateToken(
+    {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    },
+    COOKIE_MAX_AGE_SECONDS
+  );
+
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
+  });
+
+  return token;
+}
+
 export async function register(data: RegisterInput) {
   const parsed = RegisterSchema.safeParse(data);
   if (!parsed.success) {
     return { success: false, error: parsed.error.format() };
   }
 
-  const supabase = await createServerSupabaseClient();
+  const email = normalizeEmail(parsed.data.email);
 
-  // 1. Sign up with Supabase Auth
-  const { data: authData, error: signUpError } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      data: {
-        full_name: parsed.data.fullName,
-      },
+  const existing = await prisma.profile.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return {
+      success: false,
+      error: { _errors: ["Email đã được sử dụng."] },
+    };
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+
+  const profile = await prisma.profile.create({
+    data: {
+      email,
+      passwordHash,
+      fullName: parsed.data.fullName,
+      phone: parsed.data.phone || null,
+      role: UserRole.USER,
+      emailVerified: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      emailVerified: true,
     },
   });
 
-  if (signUpError) {
-    return {
-      success: false,
-      error: { _errors: [signUpError.message] },
-    };
-  }
-
-  const authUser = authData.user;
-  if (!authUser) {
-    return {
-      success: false,
-      error: { _errors: ["Không thể tạo tài khoản. Vui lòng thử lại."] },
-    };
-  }
-
-  // 2. Create profile in local DB
-  try {
-    await syncProfile(
-      authUser.id,
-      parsed.data.email,
-      parsed.data.fullName
-    );
-  } catch (dbError) {
-    // If profile creation fails, still account was created in Supabase Auth
-    console.error("Failed to create profile after signup:", dbError);
-  }
+  const token = await setAuthCookie(profile);
 
   return {
     success: true,
     data: {
-      userId: authUser.id,
-      email: parsed.data.email,
-      fullName: parsed.data.fullName,
-      requiresVerification: !authUser.email_confirmed_at,
+      userId: profile.id,
+      email: profile.email,
+      fullName: profile.fullName,
+      role: profile.role,
+      token,
+      requiresVerification: !profile.emailVerified,
     },
   };
 }
@@ -73,69 +104,65 @@ export async function login(data: LoginInput) {
     return { success: false, error: parsed.error.format() };
   }
 
-  const supabase = await createServerSupabaseClient();
+  const email = normalizeEmail(parsed.data.email);
 
-  const { data: authData, error: signInError } =
-    await supabase.auth.signInWithPassword({
-      email: parsed.data.email,
-      password: parsed.data.password,
-    });
-
-  if (signInError) {
-    return {
-      success: false,
-      error: { _errors: [signInError.message] },
-    };
-  }
-
-  const authUser = authData.user;
-  if (!authUser) {
-    return {
-      success: false,
-      error: { _errors: ["Không thể đăng nhập. Vui lòng thử lại."] },
-    };
-  }
-
-  // Ensure profile exists in local DB
-  try {
-    await syncProfile(authUser.id, parsed.data.email, null);
-  } catch (dbError) {
-    console.error("Failed to sync profile after login:", dbError);
-  }
-
-  // Read role from DB, not from client
-  const { prisma } = await import("@/src/lib/prisma");
   const profile = await prisma.profile.findUnique({
-    where: { id: authUser.id },
-    select: { role: true },
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      passwordHash: true,
+      role: true,
+      deletedAt: true,
+    },
   });
+
+  if (!profile || profile.deletedAt) {
+    return {
+      success: false,
+      error: { _errors: ["Email hoặc mật khẩu không đúng."] },
+    };
+  }
+
+  const isPasswordValid = await bcrypt.compare(
+    parsed.data.password,
+    profile.passwordHash
+  );
+
+  if (!isPasswordValid) {
+    return {
+      success: false,
+      error: { _errors: ["Email hoặc mật khẩu không đúng."] },
+    };
+  }
+
+  const token = await setAuthCookie(profile);
 
   return {
     success: true,
     data: {
-      userId: authUser.id,
-      email: parsed.data.email,
-      role: profile?.role ?? "USER",
-      token: authData.session?.access_token ?? "",
+      userId: profile.id,
+      email: profile.email,
+      role: profile.role,
+      token,
     },
   };
 }
 
 export async function logout() {
-  const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.auth.signOut();
-
-  if (error) {
-    return { success: false, error: { _errors: [error.message] } };
-  }
+  const cookieStore = await cookies();
+  cookieStore.delete(AUTH_COOKIE_NAME);
 
   return { success: true };
 }
 
 export async function getSession() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+
+  if (!token) return null;
+
+  return {
+    access_token: token,
+  };
 }
