@@ -68,7 +68,46 @@ Khởi tạo project Next.js TypeScript, Tailwind, shadcn/ui, Prisma, Supabase c
 
 ---
 
-## Phase 2 - Authentication MVP
+## Phase 2 - Database Schema + Prisma Migration
+
+### Mục tiêu
+Hoàn thiện Prisma schema cho MVP, tạo migration local, seed data demo, cập nhật schema documentation.
+
+### Tasks
+- [x] Hoàn thiện Prisma schema gồm:
+  - [x] profiles (with UserRole enum)
+  - [x] auctions (with AuctionStatus enum)
+  - [x] auction_images
+  - [x] bids (with BidStatus enum)
+  - [x] watchlist
+  - [x] notifications (with NotificationType enum)
+  - [x] audit_logs (with AuditAction enum)
+- [x] Thêm foreign key và relation hợp lý
+- [x] Thêm index quan trọng:
+  - [x] auctions(status, ends_at)
+  - [x] auctions(seller_id, status)
+  - [x] bids(auction_id, amount)
+  - [x] bids(bidder_id, created_at)
+- [x] Tạo migration local bằng Prisma (`phase_2_database_schema`)
+- [x] Tạo seed data demo (`prisma/seed.ts`)
+- [x] Cập nhật DATABASE_SCHEMA.md
+- [x] Cập nhật TASKS.md
+- [x] Bổ sung Docker local PostgreSQL setup (`docker-compose.yml`)
+- [x] Bổ sung handoff notes (`app/HANDOFF.md`)
+
+### Test checklist
+- [x] `npx prisma generate` chạy thành công
+- [x] `npx prisma validate` không lỗi
+- [x] Migration đã tạo: `prisma/migrations/phase_2_database_schema`
+- [x] Seed file: `prisma/seed.ts` với profiles, auctions, bids, notifications mẫu
+- [x] Docker compose local PostgreSQL đã được thêm để chạy migration local an toàn
+- [x] TypeScript compilation passed (`npm run lint` và `npx tsc --noEmit`)
+- [x] Không DROP/RESET/Truncate database
+- [x] Không có migration production
+
+---
+
+## Phase 3 - Authentication MVP
 
 ### Mục tiêu
 Cho phép user đăng ký, đăng nhập, xác thực email cơ bản/mock.
@@ -94,7 +133,7 @@ Cho phép user đăng ký, đăng nhập, xác thực email cơ bản/mock.
 
 ---
 
-## Phase 3 - Auction Listing MVP
+## Phase 4 - Auction Listing MVP
 
 ### Mục tiêu
 User tạo phiên đấu giá và khách xem danh sách/chi tiết phiên đấu giá.
@@ -121,7 +160,7 @@ User tạo phiên đấu giá và khách xem danh sách/chi tiết phiên đấu
 
 ---
 
-## Phase 4 - Manual Bid MVP
+## Phase 5 - Manual Bid MVP
 
 ### Mục tiêu
 Cho phép user đặt bid thủ công an toàn, chưa cần proxy bidding đầy đủ.
@@ -144,7 +183,7 @@ Cho phép user đặt bid thủ công an toàn, chưa cần proxy bidding đầy
 
 ---
 
-## Phase 5 - Auto-Bid / Proxy Bidding MVP
+## Phase 6 - Auto-Bid / Proxy Bidding MVP
 
 ### Mục tiêu
 Thêm proxy bidding đơn giản theo max price.
@@ -165,7 +204,7 @@ Thêm proxy bidding đơn giản theo max price.
 
 ---
 
-## Phase 6 - Realtime & Time Extension
+## Phase 7 - Realtime & Time Extension
 
 ### Mục tiêu
 Cập nhật realtime giá hiện tại, người đang thắng, thời gian còn lại, bid history; thêm anti-sniping extension.
@@ -187,7 +226,7 @@ Cập nhật realtime giá hiện tại, người đang thắng, thời gian cò
 
 ---
 
-## Phase 7 - Admin MVP
+## Phase 8 - Admin MVP
 
 ### Mục tiêu
 Admin xem và quản lý dữ liệu cơ bản.
@@ -210,7 +249,7 @@ Admin xem và quản lý dữ liệu cơ bản.
 
 ---
 
-## Phase 8 - Hardening, QA & Deployment Prep
+## Phase 9 - Hardening, QA & Deployment Prep
 
 ### Mục tiêu
 Tăng độ ổn định, bảo mật và chuẩn bị deploy demo.
