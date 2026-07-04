@@ -240,24 +240,25 @@ export function AuctionDetailClient({ auction, currentUser }: AuctionDetailClien
                          return;
                        }
 
-                       const amount = Number(bidPrice);
-                       if (!amount || amount < 1000) {
-                         setError("Giá đặt tối thiểu là 1,000 VND");
-                         return;
-                       }
+                        const amount = Number(bidPrice);
+                        if (!Number.isSafeInteger(amount) || amount < 1000) {
+                          setError("Giá đặt không hợp lệ.");
+                          return;
+                        }
 
-                       const minimumBidAmount = BigInt(currentPrice) + BigInt(auction.bidStep);
-                       if (BigInt(amount) < minimumBidAmount) {
-                         setError(`Giá đặt thấp hơn mức tối thiểu (${formatCurrency(minimumBidAmount)})`);
-                         return;
-                       }
+                        const minimumBidAmount = BigInt(currentPrice) + BigInt(auction.bidStep);
+                        if (BigInt(amount) < minimumBidAmount) {
+                          setError(`Giá đặt phải lớn hơn hoặc bằng ${formatCurrency(minimumBidAmount)}.`);
+                          return;
+                        }
 
-                      setIsPending(true);
+                       setIsPending(true);
                       try {
                         const result = await placeBid({
                           auctionId: auction.id,
                           bidPrice: amount,
                           isAutoBid: false,
+                          expectedCurrentPrice: currentPrice,
                         });
 
                         if (result.success) {
@@ -266,9 +267,12 @@ export function AuctionDetailClient({ auction, currentUser }: AuctionDetailClien
                           router.refresh();
                         } else {
                           setError(typeof result.error === "string" ? result.error : "Dữ liệu đặt giá không hợp lệ");
+                          if (result.code === "CURRENT_PRICE_CHANGED") {
+                            router.refresh();
+                          }
                         }
                       } catch {
-                        setError("Lỗi hệ thống. Vui lòng thử lại sau.");
+                        setError("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
                       } finally {
                         setIsPending(false);
                       }

@@ -131,8 +131,7 @@ export function AuctionsClient() {
                   variant="outline"
                   className="mt-4"
                   onClick={() => {
-                    setLoading((prev) => ({ ...prev, [tab]: true }));
-                    setActiveTab(tab);
+                    loadData(tab);
                   }}
                 >
                   Thử lại
