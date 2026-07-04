@@ -16,6 +16,11 @@ export type SafeUser = {
   role: UserRole;
   avatarUrl: string | null;
   createdAt: Date;
+  address: string | null;
+  city: string | null;
+  gender: string | null;
+  birthday: Date | null;
+  bio: string | null;
 };
 
 export async function getSessionUserId(): Promise<string | null> {
@@ -54,8 +59,13 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         fullName: true,
         phone: true,
         role: true,
-        avatarUrl: true,
-        createdAt: true,
+          avatarUrl: true,
+          createdAt: true,
+          address: true,
+          city: true,
+          gender: true,
+          birthday: true,
+          bio: true,
       },
     });
 

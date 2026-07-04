@@ -76,6 +76,11 @@ model Profile {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  address       String?   @db.Text
+  city          String?   @db.VarChar(100)
+  gender        String?   @db.VarChar(10)
+  birthday      DateTime? @db.Date
+  bio           String?   @db.Text
 
   auctionsAsSeller Auction[]      @relation("AuctionSeller")
   auctionsAsWinner Auction[]      @relation("AuctionWinner")
@@ -83,6 +88,7 @@ model Profile {
   watchlistItems   Watchlist[]
   notifications    Notification[]
   auditLogs        AuditLog[]
+  userPreference  UserPreference?
 
   @@index([email], map: "idx_profiles_email")
   @@index([role], map: "idx_profiles_role")
@@ -210,4 +216,22 @@ model AuditLog {
   @@index([createdAt], map: "idx_audit_logs_created_at")
   @@index([action], map: "idx_audit_logs_action")
   @@map("audit_logs")
+}
+
+model UserPreference {
+  id                    String    @id @default(uuid()) @db.Uuid
+  profileId             String    @map("profile_id") @db.Uuid
+  receiveEmailMarketing Boolean   @default(true) @map("receive_email_marketing")
+  receiveEmailAuction   Boolean   @default(true) @map("receive_email_auction")
+  receiveEmailNotification Boolean  @default(true) @map("receive_email_notification")
+  darkMode              Boolean   @default(false) @map("dark_mode")
+  locale                String    @default("vi-VN") @db.VarChar(10)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId], map: "uq_user_preferences_profile_id")
+  @@index([profileId], map: "idx_user_preferences_profile_id")
+  @@map("user_preferences")
 }
