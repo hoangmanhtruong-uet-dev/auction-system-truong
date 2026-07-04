@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 
 const JWT_EXPIRES_IN_SECONDS = Number.parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? "604800", 10);
 
-function getJwtSecret() {
+export function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
 
   if (!secret || secret.length < 32) {

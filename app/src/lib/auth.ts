@@ -2,6 +2,7 @@ import { prisma } from "@/src/lib/prisma";
 import { verifyToken } from "@/src/lib/jwt";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { getJwtSecret } from "@/src/lib/jwt";
 import { UserRole } from "@prisma/client";
 
 export const AUTH_COOKIE_NAME = "auth-token";
@@ -33,6 +34,13 @@ export async function getSessionUserId(): Promise<string | null> {
  */
 export async function getCurrentUser(): Promise<SafeUser | null> {
   try {
+    // Verify JWT_SECRET is properly set (helps debug on Render)
+    try {
+      getJwtSecret();
+    } catch (e) {
+      console.error("[Auth] JWT_SECRET not configured:", e);
+    }
+
     const userId = await getSessionUserId();
 
     if (!userId) return null;
@@ -52,7 +60,8 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
     });
 
     return profile;
-  } catch {
+  } catch (err) {
+    console.error("[Auth] getCurrentUser error:", err);
     return null;
   }
 }
