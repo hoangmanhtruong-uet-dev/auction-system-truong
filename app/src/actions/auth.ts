@@ -7,6 +7,7 @@ import { UserRole } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 import { AUTH_COOKIE_NAME } from "@/src/lib/auth";
 import { generateToken } from "@/src/lib/jwt";
+import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
 
 import {
   LoginInput,
@@ -16,6 +17,9 @@ import {
 } from "@/src/types";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_RATE_LIMIT = 10;
+const REGISTER_RATE_LIMIT = 5;
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -50,6 +54,17 @@ export async function register(data: RegisterInput) {
   }
 
   const email = normalizeEmail(parsed.data.email);
+  const rateLimit = checkRateLimit(`register:${email}`, {
+    limit: REGISTER_RATE_LIMIT,
+    windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  });
+
+  if (!rateLimit.allowed) {
+    return {
+      success: false,
+      error: { _errors: [getRateLimitErrorMessage(rateLimit)] },
+    };
+  }
 
   const existing = await prisma.profile.findUnique({
     where: { email },
@@ -105,6 +120,17 @@ export async function login(data: LoginInput) {
   }
 
   const email = normalizeEmail(parsed.data.email);
+  const rateLimit = checkRateLimit(`login:${email}`, {
+    limit: LOGIN_RATE_LIMIT,
+    windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  });
+
+  if (!rateLimit.allowed) {
+    return {
+      success: false,
+      error: { _errors: [getRateLimitErrorMessage(rateLimit)] },
+    };
+  }
 
   const profile = await prisma.profile.findUnique({
     where: { email },

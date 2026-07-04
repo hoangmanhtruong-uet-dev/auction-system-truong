@@ -16,7 +16,6 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
 
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,22 +27,30 @@ function LoginForm() {
     setError(null);
     setIsSubmitting(true);
 
-    const result = await login({ email, password });
+    try {
+      const result = await login({ email, password });
 
-    if (!result.success) {
-      const errorMsg =
-        result.error && "_errors" in result.error
-          ? (result.error as { _errors: string[] })._errors[0]
-          : "Đăng nhập thất bại";
+      if (!result.success) {
+        const errorMsg =
+          result.error && "_errors" in result.error
+            ? (result.error as { _errors: string[] })._errors[0]
+            : "Đăng nhập thất bại";
+        setError(errorMsg);
+        toast.error(errorMsg);
+        setIsSubmitting(false);
+        return;
+      }
+
+      toast.success("Đăng nhập thành công!");
+      router.replace(redirectTo);
+      router.refresh();
+    } catch (err) {
+      console.error("Login submit error:", err);
+      const errorMsg = "Không thể đăng nhập. Vui lòng thử lại.";
       setError(errorMsg);
       toast.error(errorMsg);
       setIsSubmitting(false);
-      return;
     }
-
-    toast.success("Đăng nhập thành công!");
-    router.push(redirectTo);
-    router.refresh();
   }
 
   return (

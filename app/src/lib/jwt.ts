@@ -1,7 +1,16 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-super-secret-jwt-key-change-in-production";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const JWT_EXPIRES_IN_SECONDS = Number.parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? "604800", 10);
+
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret || secret.length < 32) {
+    throw new Error("JWT_SECRET must be set and contain at least 32 characters.");
+  }
+
+  return secret;
+}
 
 export type JwtPayload = {
   userId: string;
@@ -10,13 +19,13 @@ export type JwtPayload = {
 };
 
 export function generateToken(payload: JwtPayload, expiresInSeconds?: number): string {
-  const expiresIn = expiresInSeconds || parseInt(JWT_EXPIRES_IN, 10);
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+  const expiresIn = expiresInSeconds || JWT_EXPIRES_IN_SECONDS;
+  return jwt.sign(payload, getJwtSecret(), { expiresIn });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
     return decoded;
   } catch {
     return null;

@@ -6,10 +6,15 @@ import { AuditAction, AuctionStatus, BidStatus } from "@prisma/client";
 import { formatCurrency } from "@/lib/utils";
 import { getCurrentUser } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
 import { ActionResult, CreateAuctionInput, CreateAuctionSchema, PlaceBidInput, PlaceBidSchema } from "@/src/types";
 
 const NETWORK_ERROR_MESSAGE = "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";
 const LOGIN_REQUIRED_MESSAGE = "Bạn cần đăng nhập để thực hiện thao tác này.";
+const BID_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const BID_RATE_LIMIT = 30;
+const AUTO_EXTENSION_THRESHOLD_MS = 2 * 60 * 1000;
+const AUTO_EXTENSION_DURATION_MS = 2 * 60 * 1000;
 
 function getValidationMessage(error: { flatten: () => { fieldErrors: Record<string, string[]>; formErrors: string[] } }) {
   const flattened = error.flatten();
@@ -227,7 +232,20 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
   }
 
   try {
-    const bid = await prisma.$transaction(async (tx) => {
+      const rateLimit = checkRateLimit(`bid:${user.id}:${parsed.data.auctionId}`, {
+        limit: BID_RATE_LIMIT,
+        windowMs: BID_RATE_LIMIT_WINDOW_MS,
+      });
+
+      if (!rateLimit.allowed) {
+        return {
+          success: false,
+          error: getRateLimitErrorMessage(rateLimit),
+          code: "RATE_LIMITED",
+        };
+      }
+
+      const bid = await prisma.$transaction(async (tx) => {
       const lockedAuctions = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id
         FROM auctions
@@ -254,6 +272,9 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           bidStep: true,
           endsAt: true,
           winnerId: true,
+          autoExtensionEnabled: true,
+          maxExtensions: true,
+          currentExtensionCount: true,
         },
       });
 
@@ -308,12 +329,29 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         },
       });
 
+      const shouldAutoExtend =
+        auction.autoExtensionEnabled &&
+        auction.currentExtensionCount < auction.maxExtensions &&
+        auction.endsAt.getTime() - now.getTime() <= AUTO_EXTENSION_THRESHOLD_MS;
+
+      const nextEndsAt = shouldAutoExtend
+        ? new Date(auction.endsAt.getTime() + AUTO_EXTENSION_DURATION_MS)
+        : auction.endsAt;
+
       await tx.auction.update({
         where: { id: auction.id },
         data: {
           currentPrice: bidAmount,
           winnerId: user.id,
           updatedAt: now,
+          ...(shouldAutoExtend
+            ? {
+                endsAt: nextEndsAt,
+                currentExtensionCount: {
+                  increment: 1,
+                },
+              }
+            : {}),
         },
       });
 
@@ -334,6 +372,8 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
             bidderId: user.id,
             auctionCurrentPrice: bidAmount.toString(),
             auctionWinnerId: user.id,
+            autoExtended: shouldAutoExtend,
+            endsAt: nextEndsAt.toISOString(),
           },
         },
       });
