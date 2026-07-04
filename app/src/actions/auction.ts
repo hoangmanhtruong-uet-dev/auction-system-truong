@@ -513,6 +513,180 @@ export async function getAuctionById(auctionId: string) {
   }
 }
 
+export type SellerProductItem = {
+  id: string;
+  title: string;
+  description: string;
+  startPrice: string;
+  currentPrice: string;
+  status: AuctionStatus;
+  sellerId: string;
+  winnerId: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  bidCount: number;
+  watchlistCount: number;
+  thumbnailUrl: string | null;
+  images: Array<{
+    id: string;
+    url: string;
+    altText: string | null;
+    sortOrder: number;
+  }>;
+};
+
+export async function listSellerProducts(): Promise<ActionResult<SellerProductItem[]>> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return { success: false, error: LOGIN_REQUIRED_MESSAGE, code: "AUTH_REQUIRED" };
+  }
+
+  try {
+    const auctions = await prisma.auction.findMany({
+      where: {
+        sellerId: user.id,
+        deletedAt: null,
+      },
+      include: {
+        images: {
+          orderBy: {
+            sortOrder: "asc",
+          },
+          select: {
+            id: true,
+            url: true,
+            altText: true,
+            sortOrder: true,
+          },
+        },
+        _count: {
+          select: {
+            bids: {
+              where: {
+                deletedAt: null,
+              },
+            },
+            watchlistItems: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+    });
+
+    return {
+      success: true,
+      data: auctions.map((auction) => ({
+        id: auction.id,
+        title: auction.title,
+        description: auction.description,
+        startPrice: auction.startPrice.toString(),
+        currentPrice: auction.currentPrice.toString(),
+        status: auction.status,
+        sellerId: auction.sellerId,
+        winnerId: auction.winnerId,
+        startsAt: auction.startsAt?.toISOString() ?? null,
+        endsAt: auction.endsAt?.toISOString() ?? null,
+        createdAt: auction.createdAt.toISOString(),
+        updatedAt: auction.updatedAt.toISOString(),
+        bidCount: auction._count.bids,
+        watchlistCount: auction._count.watchlistItems,
+        thumbnailUrl: auction.images[0]?.url ?? null,
+        images: auction.images,
+      })),
+    };
+  } catch (error) {
+    console.error("List seller products error:", error);
+    return { success: false, error: "Không thể tải danh sách sản phẩm của bạn." };
+  }
+}
+
+export async function deleteSellerProduct(auctionId: string): Promise<ActionResult<{ auctionId: string }>> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return { success: false, error: LOGIN_REQUIRED_MESSAGE, code: "AUTH_REQUIRED" };
+  }
+
+  try {
+    const auction = await prisma.auction.findFirst({
+      where: {
+        id: auctionId,
+        sellerId: user.id,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+        sellerId: true,
+        _count: {
+          select: {
+            bids: {
+              where: {
+                deletedAt: null,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!auction) {
+      return { success: false, error: "Sản phẩm không tồn tại hoặc bạn không có quyền thao tác.", code: "NOT_FOUND" };
+    }
+
+    if (auction.status === AuctionStatus.ACTIVE && auction._count.bids > 0) {
+      return {
+        success: false,
+        error: "Không thể xóa phiên đang có lượt bid. Bạn có thể kết thúc hoặc ẩn sau khi phiên hoàn tất.",
+        code: "AUCTION_HAS_BIDS",
+      };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.auction.update({
+        where: {
+          id: auction.id,
+        },
+        data: {
+          deletedAt: new Date(),
+          status: auction.status === AuctionStatus.ACTIVE ? AuctionStatus.CANCELLED : auction.status,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          profileId: user.id,
+          action: AuditAction.AUCTION_CANCELLED,
+          resourceType: "auction",
+          resourceId: auction.id,
+          oldValues: {
+            title: auction.title,
+            status: auction.status,
+            deletedAt: null,
+          },
+          newValues: {
+            deletedAt: new Date().toISOString(),
+            hiddenBySeller: true,
+          },
+        },
+      });
+    });
+
+    revalidatePath("/products");
+    revalidatePath("/auctions");
+    revalidatePath(`/auctions/${auction.id}`);
+
+    return { success: true, data: { auctionId: auction.id } };
+  } catch (error) {
+    console.error("Delete seller product error:", error);
+    return { success: false, error: NETWORK_ERROR_MESSAGE, code: "DELETE_SELLER_PRODUCT_FAILED" };
+  }
+}
+
 export async function listAuctions(filter?: { status?: string; sellerId?: string; take?: number }) {
   try {
     const status = normalizeStatus(filter?.status);
