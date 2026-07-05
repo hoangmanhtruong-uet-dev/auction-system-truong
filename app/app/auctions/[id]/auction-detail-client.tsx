@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Hammer } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -57,7 +57,47 @@ export function AuctionDetailClient({ auction, currentUser }: AuctionDetailClien
   const [bidPrice, setBidPrice] = useState("");
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const latestAuctionUpdateRef = useRef(auction.updatedAt);
   const router = useRouter();
+
+  useEffect(() => {
+    latestAuctionUpdateRef.current = auction.updatedAt;
+  }, [auction.updatedAt]);
+
+  useEffect(() => {
+    if (typeof EventSource === "undefined") {
+      return;
+    }
+
+    const eventSource = new EventSource(`/api/auctions/${auction.id}/stream`);
+
+    eventSource.addEventListener("connected", () => {
+      setIsRealtimeConnected(true);
+    });
+
+    eventSource.addEventListener("auction:update", (event) => {
+      try {
+        const payload = JSON.parse((event as MessageEvent).data) as { updatedAt?: string };
+
+        if (payload.updatedAt && payload.updatedAt !== latestAuctionUpdateRef.current) {
+          latestAuctionUpdateRef.current = payload.updatedAt;
+          router.refresh();
+        }
+      } catch {
+        router.refresh();
+      }
+    });
+
+    eventSource.onerror = () => {
+      setIsRealtimeConnected(false);
+    };
+
+    return () => {
+      setIsRealtimeConnected(false);
+      eventSource.close();
+    };
+  }, [auction.id, router]);
 
   useEffect(() => {
     if (auction.status !== "ACTIVE") {
@@ -332,8 +372,20 @@ export function AuctionDetailClient({ auction, currentUser }: AuctionDetailClien
 
           <Card>
             <CardHeader>
-              <CardTitle>Lịch sử đặt giá ({auction.bidCount} lần)</CardTitle>
-              <CardDescription>Hiển thị các bid thật từ bảng bids, mới nhất ở trên.</CardDescription>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle>Lịch sử đặt giá ({auction.bidCount} lần)</CardTitle>
+                  <CardDescription>Hiển thị các bid thật từ bảng bids, mới nhất ở trên.</CardDescription>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-1 text-xs ${
+                    isRealtimeConnected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                  }`}
+                  title={isRealtimeConnected ? "Đang nhận cập nhật realtime" : "Đang kết nối realtime"}
+                >
+                  {isRealtimeConnected ? "Realtime" : "Connecting"}
+                </span>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
