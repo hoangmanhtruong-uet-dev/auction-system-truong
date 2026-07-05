@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { AuditAction, AuctionStatus, BidStatus } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
 
 import { formatCurrency } from "@/lib/utils";
 import { getCurrentUser } from "@/src/lib/auth";
@@ -413,8 +412,8 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           auctionId: auction.id,
           bidderId: user.id,
           amount: bidAmount,
-          isAutoBid: parsed.data.isAutoBid,
-          autoBidMaxPrice: parsed.data.autoBidMaxPrice ? BigInt(parsed.data.autoBidMaxPrice) : null,
+          isAutoBid: false,
+          autoBidMaxPrice: null,
           status: BidStatus.ACTIVE,
         },
         select: {
@@ -474,10 +473,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         },
       });
 
-      // Process autobids after manual bid placement
-      const autoBidsPlaced = await processAutoBidsInTx(tx, auction.id, now);
-
-      return { createdBid, autoBidsPlaced };
+      return { createdBid, autoBidsPlaced: 0 };
     });
 
     revalidatePath("/");
@@ -507,163 +503,6 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
 
     return normalizeError(err, "placeBid", "PLACE_BID_FAILED", NETWORK_ERROR_MESSAGE);
   }
-}
-
-/**
- * Process autobids for an auction after a bid is placed.
- * Finds all users who have active autobids (isAutoBid=true) with autoBidMaxPrice > currentPrice,
- * and places bids for them automatically. Runs inside the parent transaction.
- */
-async function processAutoBidsInTx(
-  tx: Prisma.TransactionClient & { $queryRaw: typeof prisma.$queryRaw },
-  auctionId: string,
-  now: Date,
-): Promise<number> {
-  const MAX_AUTOBID_ITERATIONS = 10;
-  let autoBidsPlaced = 0;
-
-  for (let i = 0; i < MAX_AUTOBID_ITERATIONS; i++) {
-    // Fetch current auction state (locked via parent FOR UPDATE)
-    const auction = await tx.auction.findFirst({
-      where: { id: auctionId, deletedAt: null },
-      select: {
-        id: true,
-        currentPrice: true,
-        winnerId: true,
-        bidStep: true,
-        status: true,
-        endsAt: true,
-        autoExtensionEnabled: true,
-        maxExtensions: true,
-        currentExtensionCount: true,
-      },
-    });
-
-    if (!auction || auction.status !== AuctionStatus.ACTIVE || !auction.endsAt || auction.endsAt <= now) {
-      break;
-    }
-
-    // Find distinct autobidders who:
-    // - Have the most recent autobid on this auction
-    // - Have autoBidMaxPrice > currentPrice
-    // - Are not the current winner
-    // Sort by max price descending
-    const autobidders = await tx.$queryRaw<Array<{ bidder_id: string; auto_bid_max_price: bigint }>>`
-      WITH latest_autobids AS (
-        SELECT DISTINCT ON (b.bidder_id) b.bidder_id, b.auto_bid_max_price
-        FROM bids b
-        WHERE b.auction_id = ${auctionId}::uuid
-          AND b.is_auto_bid = true
-          AND b.auto_bid_max_price IS NOT NULL
-          AND b.deleted_at IS NULL
-        ORDER BY b.bidder_id, b.created_at DESC
-      )
-      SELECT * FROM latest_autobids
-      WHERE auto_bid_max_price > ${auction.currentPrice}::bigint
-        AND (${auction.winnerId}::uuid IS NULL OR bidder_id != ${auction.winnerId}::uuid)
-      ORDER BY auto_bid_max_price DESC
-    `;
-
-    if (autobidders.length === 0) {
-      break;
-    }
-
-    const topBidder = autobidders[0];
-    const nextMinBid = auction.currentPrice + auction.bidStep;
-    const autoBidAmount = nextMinBid < topBidder.auto_bid_max_price
-      ? nextMinBid
-      : topBidder.auto_bid_max_price;
-
-    if (autoBidAmount <= auction.currentPrice) {
-      break;
-    }
-
-    // Mark existing active bids as LOST
-    await tx.bid.updateMany({
-      where: {
-        auctionId: auction.id,
-        deletedAt: null,
-        status: BidStatus.ACTIVE,
-      },
-      data: {
-        status: BidStatus.LOST,
-      },
-    });
-
-    // Create the auto-bid
-    const autoBid = await tx.bid.create({
-      data: {
-        auctionId: auction.id,
-        bidderId: topBidder.bidder_id,
-        amount: autoBidAmount,
-        isAutoBid: true,
-        autoBidMaxPrice: topBidder.auto_bid_max_price,
-        status: BidStatus.ACTIVE,
-      },
-      select: {
-        id: true,
-        amount: true,
-      },
-    });
-
-    // Handle auto-extension if needed
-    const shouldAutoExtend =
-      auction.autoExtensionEnabled &&
-      auction.currentExtensionCount < auction.maxExtensions &&
-      auction.endsAt.getTime() - now.getTime() <= AUTO_EXTENSION_THRESHOLD_MS;
-
-    const nextEndsAt = shouldAutoExtend
-      ? new Date(auction.endsAt.getTime() + AUTO_EXTENSION_DURATION_MS)
-      : auction.endsAt;
-
-    // Update auction
-    await tx.auction.update({
-      where: { id: auction.id },
-      data: {
-        currentPrice: autoBidAmount,
-        winnerId: topBidder.bidder_id,
-        updatedAt: now,
-        ...(shouldAutoExtend
-          ? {
-              endsAt: nextEndsAt,
-              currentExtensionCount: {
-                increment: 1,
-              },
-            }
-          : {}),
-      },
-    });
-
-    // Audit log
-    await tx.auditLog.create({
-      data: {
-        profileId: topBidder.bidder_id,
-        action: AuditAction.BID_PLACED,
-        resourceType: "bid",
-        resourceId: autoBid.id,
-        oldValues: {
-          auctionId: auction.id,
-          currentPrice: auction.currentPrice.toString(),
-          winnerId: auction.winnerId,
-        },
-        newValues: {
-          auctionId: auction.id,
-          amount: autoBid.amount.toString(),
-          bidderId: topBidder.bidder_id,
-          isAutoBid: true,
-          autoBidMaxPrice: topBidder.auto_bid_max_price.toString(),
-          auctionCurrentPrice: autoBidAmount.toString(),
-          auctionWinnerId: topBidder.bidder_id,
-          autoExtended: shouldAutoExtend,
-          endsAt: nextEndsAt.toISOString(),
-        },
-      },
-    });
-
-    autoBidsPlaced++;
-  }
-
-  return autoBidsPlaced;
 }
 
 export async function cancelAutoBid(auctionId: string): Promise<ActionResult<{ auctionId: string }>> {

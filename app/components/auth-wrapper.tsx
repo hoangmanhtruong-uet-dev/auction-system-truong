@@ -1,7 +1,5 @@
-import { getCurrentUser } from "@/src/lib/auth";
-import { AuthStatus } from "./auth-status";
+import { AuthStatusClient } from "./auth-status-client";
 
-export async function AuthWrapper() {
-  const user = await getCurrentUser();
-  return <AuthStatus user={user} />;
+export function AuthWrapper() {
+  return <AuthStatusClient />;
 }

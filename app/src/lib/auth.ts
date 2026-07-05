@@ -129,6 +129,22 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
       };
     }
   } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    const digest =
+      typeof err === "object" && err !== null && "digest" in err
+        ? String(err.digest)
+        : "";
+
+    // Next.js throws this while probing static rendering for routes that read cookies().
+    // Keep real auth/database errors visible.
+    if (
+      message.includes("Dynamic server usage") ||
+      message.includes("couldn't be rendered statically") ||
+      digest.includes("DYNAMIC_SERVER_USAGE")
+    ) {
+      return null;
+    }
+
     console.error("[Auth] getCurrentUser error:", err);
     return null;
   }

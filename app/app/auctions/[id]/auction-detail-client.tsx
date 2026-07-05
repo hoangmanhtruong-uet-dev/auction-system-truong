@@ -23,7 +23,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { formatCurrency } from "@/lib/utils";
-import { placeBid, cancelAutoBid, type SerializedAuctionDetails } from "@/src/actions/auction";
+import { placeBid, type SerializedAuctionDetails } from "@/src/actions/auction";
 import type { SafeUser } from "@/src/lib/auth";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { withTimeout } from "@/src/lib/request-utils";
@@ -334,8 +334,6 @@ function BidPanel({
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [isAutoBidMode, setIsAutoBidMode] = useState(false);
-  const [autoBidMaxPrice, setAutoBidMaxPrice] = useState("");
   // Track last known price to detect changes
   const previousMinimumBidRef = useRef(minimumBid);
   const router = useRouter();
@@ -344,15 +342,6 @@ function BidPanel({
   const isActive = auction.status === "ACTIVE" && !isEndedByTime;
   const bidAmount = bidPrice ? Number(bidPrice) : 0;
   const isBidTooLow = bidPrice !== "" && BigInt(bidPrice) < BigInt(minimumBid);
-  const autoBidMaxBidAmount = autoBidMaxPrice ? Number(autoBidMaxPrice) : 0;
-  const isAutoBidMaxInvalid = isAutoBidMode && autoBidMaxBidAmount <= bidAmount;
-
-  // Check if user has an active autobid on this auction
-  const hasActiveAutoBid = useMemo(() => {
-    return auction.bids.some(
-      (bid) => bid.isAutoBid && bid.status === "ACTIVE" && bid.bidder.id === currentUser?.id,
-    );
-  }, [auction.bids, currentUser?.id]);
 
   // Detect price changes & warn user
   useEffect(() => {
@@ -414,19 +403,6 @@ function BidPanel({
       return;
     }
 
-    // Validate autobid max price
-    if (isAutoBidMode && !autoBidMaxPrice) {
-      setError("Vui lòng nhập giá tối đa cho Auto-bid.");
-      toast.error("Vui lòng nhập giá tối đa cho Auto-bid.");
-      return;
-    }
-
-    if (isAutoBidMode && BigInt(autoBidMaxPrice) <= BigInt(minimumBid)) {
-      setError(`Giá tối đa phải lớn hơn giá tối thiểu hiện tại (${formatCurrency(minimumBid)}).`);
-      toast.error(`Giá tối đa phải lớn hơn giá tối thiểu hiện tại.`);
-      return;
-    }
-
     const validationMessage = validateBid();
     if (validationMessage) {
       setError(validationMessage);
@@ -443,20 +419,14 @@ function BidPanel({
       const result = await placeBid({
         auctionId: auction.id,
         bidPrice: bidAmount,
-        isAutoBid: isAutoBidMode,
-        autoBidMaxPrice: isAutoBidMode ? autoBidMaxBidAmount : undefined,
+        isAutoBid: false,
+        autoBidMaxPrice: undefined,
         expectedCurrentPrice: currentPrice,
       });
 
       if (result.success) {
-        toast.success(
-          isAutoBidMode
-            ? `Đã bật Auto-bid thành công! Hệ thống sẽ đặt giá thay bạn đến mức ${formatCurrency(autoBidMaxBidAmount)}.`
-            : `Đã đặt giá thành công.`,
-        );
+        toast.success(`Đã đặt giá thành công.`);
         setBidPrice(minimumBid);
-        setAutoBidMaxPrice("");
-        setIsAutoBidMode(false);
         setIsConfirmOpen(false);
         router.refresh();
         return;
@@ -476,34 +446,6 @@ function BidPanel({
       }
       setError(message);
       toast.error(message);
-    } finally {
-      setIsPending(false);
-    }
-  }
-
-  async function handleCancelAutoBid() {
-    if (!hasActiveAutoBid) return;
-
-    if (isOffline) {
-      toast.error("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
-      return;
-    }
-
-    if (!window.confirm("Bạn có chắc chắn muốn hủy Auto-bid này?")) return;
-
-    setIsPending(true);
-
-    try {
-      const result = await cancelAutoBid(auction.id);
-      if (result.success) {
-        toast.success("Đã hủy Auto-bid thành công.");
-        router.refresh();
-        return;
-      }
-
-      toast.error(typeof result.error === "string" ? result.error : "Không thể hủy Auto-bid.");
-    } catch {
-      toast.error("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
     } finally {
       setIsPending(false);
     }
@@ -685,12 +627,6 @@ function BidPanel({
                           <span className="text-muted-foreground">Giá đặt của bạn</span>
                           <span className="font-semibold">{formatCurrency(bidPrice)}</span>
                         </div>
-                        {isAutoBidMode && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Auto-bid tối đa</span>
-                            <span className="font-semibold">{formatCurrency(autoBidMaxBidAmount)}</span>
-                          </div>
-                        )}
                       </div>
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setIsConfirmOpen(false)}>
@@ -713,75 +649,15 @@ function BidPanel({
                   </Button>
                 ))}
               </div>
-
               <Separator />
 
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <input
-                    id="autoBidMode"
-                    type="checkbox"
-                    checked={isAutoBidMode}
-                    onChange={(event) => setIsAutoBidMode(event.target.checked)}
-                    disabled={true}
-                    className="h-4 w-4 rounded border-input accent-primary opacity-50 cursor-not-allowed"
-                  />
-                  <Label htmlFor="autoBidMode" className="text-sm cursor-pointer">
-                    Auto-bid
-                  </Label>
-                  <Badge variant="secondary" className="text-[10px]">Sắp ra mắt</Badge>
-                </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[10px]">Auto-bid: Sắp ra mắt</Badge>
               </div>
-              {isAutoBidMode && false && (
-                <div>
-                  <Label htmlFor="autoBidMaxPrice">Giá tối đa Auto-bid</Label>
-                  <div className="mt-1.5 flex gap-2">
-                    <div className="relative flex-1">
-                      <Input
-                        id="autoBidMaxPrice"
-                        type="number"
-                        inputMode="numeric"
-                        value={autoBidMaxPrice}
-                        onChange={(e) => {
-                          setAutoBidMaxPrice(e.target.value);
-                          setError(null);
-                        }}
-                        disabled={isPending}
-                        className={`[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-                          isAutoBidMaxInvalid ? "border-destructive ring-destructive/20" : ""
-                        }`}
-                        placeholder="Giá tối đa"
-                      />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        đ
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </>
           )}
         </CardContent>
 
-        {currentUser && hasActiveAutoBid && (
-          <CardFooter className="flex-col gap-2 border-t bg-muted/30 pt-4">
-            <div className="flex w-full items-center justify-between text-sm">
-              <span className="flex items-center gap-1.5">
-                <Zap className="h-4 w-4 text-primary" />
-                Auto-bid đang hoạt động
-              </span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              disabled={isPending || !isActive}
-              onClick={handleCancelAutoBid}
-            >
-              {isPending ? "Đang xử lý..." : "Hủy Auto-bid"}
-            </Button>
-          </CardFooter>
-        )}
       </Card>
     </>
   );

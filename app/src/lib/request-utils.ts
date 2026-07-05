@@ -59,6 +59,20 @@ export function useNetworkStatus(): {
  * Retry a function with exponential backoff.
  * Only retries for READ operations (idempotent). For mutations, set `retryable = false`.
  */
+type ErrorWithCode = Error & { code?: AppErrorCode; status?: number };
+
+function getAppErrorCode(error: unknown): AppErrorCode | undefined {
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: AppErrorCode }).code;
+  }
+
+  return undefined;
+}
+
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   options?: {
@@ -94,7 +108,8 @@ export async function retryWithBackoff<T>(
         lastError.message.includes("NetworkError") ||
         lastError.message.includes("Failed to fetch");
 
-      if (!isNetworkError && !(err instanceof Error && isRetryableError((err as any).code))) {
+      const code = getAppErrorCode(err);
+      if (!isNetworkError && !(code && isRetryableError(code))) {
         throw lastError;
       }
 
@@ -149,7 +164,7 @@ export async function wait(ms: number): Promise<void> {
 /**
  * Create a fetch wrapper with timeout, retry, and network check.
  */
-export function createAuthenticatedRequest<TResponse = any, TBody = any>({
+export function createAuthenticatedRequest<TResponse = unknown, TBody = unknown>({
   url,
   method = "GET",
   body,
@@ -204,7 +219,7 @@ export function createAuthenticatedRequest<TResponse = any, TBody = any>({
           const message = errorData?.message || `HTTP ${res.status}: ${res.statusText}`;
           const code = errorData?.code;
 
-          const error = new Error(message) as Error & { code?: AppErrorCode; status?: number };
+          const error = new Error(message) as ErrorWithCode;
           error.code = code;
           error.status = res.status;
 
@@ -242,8 +257,8 @@ export function parseErrorResponse(error: Error): {
     error.message.includes("timed out");
 
   // Check if error has code property
-  if ("code" in error && typeof (error as any).code === "string") {
-    const code = (error as any).code as AppErrorCode;
+  const code = getAppErrorCode(error);
+  if (code) {
     return {
       code,
       message,
