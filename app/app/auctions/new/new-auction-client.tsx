@@ -56,7 +56,7 @@ const STORAGE_KEY = "auction-form-draft";
 export function NewAuctionClient() {
   const router = useRouter();
   const { isOnline } = useNetworkStatus();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -132,7 +132,7 @@ export function NewAuctionClient() {
     }
   }, [title, category, condition, description, startPrice, bidStep, duration, imageUrls]);
 
-  // Check authentication on mount
+  // Server page already guards this route; this keeps a soft client-side check for stale sessions.
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -397,10 +397,10 @@ export function NewAuctionClient() {
         </Alert>
         <div className="mt-6 flex justify-center gap-4">
           <Button asChild>
-            <a href="/auth/login">Đăng nhập</a>
+            <a href="/auth/login?redirect=/auctions/new">Đăng nhập</a>
           </Button>
           <Button asChild variant="outline">
-            <a href="/auth/register">Đăng ký</a>
+            <a href="/auth/register?redirect=/auctions/new">Đăng ký</a>
           </Button>
         </div>
       </div>
