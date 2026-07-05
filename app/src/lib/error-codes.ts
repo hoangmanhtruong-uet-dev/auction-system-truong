@@ -58,6 +58,7 @@ export type AppErrorCode =
   | "AUTO_BID_PRICE_EXCEEDS_MAX"
   | "AUTO_BID_MAX_TOO_LOW"
   | "AUTO_BID_NOT_FOUND"
+  | "AUTO_BID_DISABLED"
 
   // Profile / User
   | "USER_NOT_FOUND"
@@ -239,6 +240,7 @@ export const DEFAULT_ERROR_MESSAGES: Record<AppErrorCode, string> = {
   AUTO_BID_PRICE_EXCEEDS_MAX: "Giá đặt không thể lớn hơn giá tự động tối đa.",
   AUTO_BID_MAX_TOO_LOW: "Giá tự động tối đa phải lớn hơn giá đặt hiện tại.",
   AUTO_BID_NOT_FOUND: "Không tìm thấy auto-bid để hủy.",
+  AUTO_BID_DISABLED: "Auto-bid sắp ra mắt.",
 
   // Profile / User
   USER_NOT_FOUND: "Không tìm thấy người dùng.",

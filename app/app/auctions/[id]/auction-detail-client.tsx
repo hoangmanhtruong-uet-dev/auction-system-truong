@@ -723,15 +723,16 @@ function BidPanel({
                     type="checkbox"
                     checked={isAutoBidMode}
                     onChange={(event) => setIsAutoBidMode(event.target.checked)}
-                    disabled={isPending}
-                    className="h-4 w-4 rounded border-input accent-primary"
+                    disabled={true}
+                    className="h-4 w-4 rounded border-input accent-primary opacity-50 cursor-not-allowed"
                   />
                   <Label htmlFor="autoBidMode" className="text-sm cursor-pointer">
                     Auto-bid
                   </Label>
+                  <Badge variant="secondary" className="text-[10px]">Sắp ra mắt</Badge>
                 </div>
               </div>
-              {isAutoBidMode && (
+              {isAutoBidMode && false && (
                 <div>
                   <Label htmlFor="autoBidMaxPrice">Giá tối đa Auto-bid</Label>
                   <div className="mt-1.5 flex gap-2">

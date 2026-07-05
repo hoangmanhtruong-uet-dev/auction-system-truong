@@ -367,6 +367,13 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         );
       }
 
+      if (parsed.data.isAutoBid) {
+        throw new BidFlowError("AUTO_BID_DISABLED", "Auto-bid sắp ra mắt.", {
+          userId: user.id,
+          auctionId: auction.id,
+        });
+      }
+
       const bidAmount = BigInt(parsed.data.bidPrice);
       const minimumBid = auction.currentPrice + auction.bidStep;
 
