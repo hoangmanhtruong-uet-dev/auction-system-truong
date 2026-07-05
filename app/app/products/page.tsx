@@ -305,7 +305,7 @@ function ProductCard({ product, onDelete }: { product: SellerProductItem; onDele
           </div>
         )}
         <div className="absolute left-3 top-3">
-          <ProductStatusBadge status={product.status} hasBid={product.bidCount > 0} endsAt={product.endsAt} />
+          <ProductStatusBadge status={product.status} hasBid={product.bidCount > 0} endsAt={product.endsAt} paidAt={product.paidAt} />
         </div>
         {derived === "active" && product.endsAt && new Date(product.endsAt).getTime() - Date.now() < 30 * 60 * 1000 && (
           <div className="absolute bottom-3 left-3 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow">
@@ -385,7 +385,7 @@ function ProductTable({ products, onDelete }: { products: SellerProductItem[]; o
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4"><ProductStatusBadge status={product.status} hasBid={product.bidCount > 0} endsAt={product.endsAt} /></td>
+                <td className="px-4 py-4"><ProductStatusBadge status={product.status} hasBid={product.bidCount > 0} endsAt={product.endsAt} paidAt={product.paidAt} /></td>
                 <td className="px-4 py-4 font-semibold">{formatCurrency(product.currentPrice === "0" ? product.startPrice : product.currentPrice)}</td>
                 <td className="px-4 py-4">{product.bidCount}</td>
                 <td className="px-4 py-4">{product.watchlistCount}</td>

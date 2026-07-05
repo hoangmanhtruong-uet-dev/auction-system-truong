@@ -61,6 +61,8 @@ export type SerializedAuctionListItem = {
   updatedAt: string;
   bidCount: number;
   thumbnailUrl: string | null;
+  paidAt: string | null;
+  paidById: string | null;
   seller: {
     id: string;
     fullName: string;
@@ -121,6 +123,8 @@ function serializeAuctionListItem(
     endsAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    paidAt: Date | null;
+    paidById: string | null;
     seller: { id: string; fullName: string; avatarUrl: string | null };
     images: Array<{ id: string; url: string; altText: string | null; sortOrder: number }>;
     _count: { bids: number };
@@ -141,6 +145,8 @@ function serializeAuctionListItem(
     updatedAt: auction.updatedAt.toISOString(),
     bidCount: auction._count.bids,
     thumbnailUrl: auction.images[0]?.url ?? null,
+    paidAt: auction.paidAt?.toISOString() ?? null,
+    paidById: auction.paidById,
     seller: auction.seller,
     images: auction.images,
   };
@@ -166,11 +172,29 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
   }
 
   try {
-    const auction = await prisma.$transaction(async (tx) => {
-      const startsAt = new Date();
-      const endsAt = new Date(startsAt.getTime() + parsed.data.duration * 60 * 1000);
-      const startPrice = BigInt(parsed.data.startPrice);
+    const now = new Date();
+    const calculatedStartsAt = now;
+    const calculatedEndsAt = new Date(calculatedStartsAt.getTime() + parsed.data.duration * 60 * 1000);
 
+    if (calculatedEndsAt <= calculatedStartsAt) {
+      return error("VALIDATION_ERROR", "Giờ kết thúc đấu giá phải lớn hơn giờ bắt đầu.", {
+        fieldErrors: { duration: "Giờ kết thúc đấu giá phải lớn hơn giờ bắt đầu." },
+      });
+    }
+
+    if (calculatedEndsAt <= now) {
+      return error("VALIDATION_ERROR", "Giờ kết thúc đấu giá phải lớn hơn thời gian hiện tại.", {
+        fieldErrors: { duration: "Giờ kết thúc đấu giá phải lớn hơn thời gian hiện tại." },
+      });
+    }
+
+    const status =
+      calculatedStartsAt <= now && calculatedEndsAt > now
+        ? AuctionStatus.ACTIVE
+        : AuctionStatus.PENDING;
+    const startPrice = BigInt(parsed.data.startPrice);
+
+    const auction = await prisma.$transaction(async (tx) => {
       const createdAuction = await tx.auction.create({
         data: {
           title: parsed.data.title,
@@ -184,10 +208,10 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
           autoExtensionEnabled: parsed.data.autoExtensionEnabled,
           maxExtensions: parsed.data.maxExtensions,
           currentExtensionCount: 0,
-          status: AuctionStatus.PENDING,
+          status,
           sellerId: user.id,
-          startsAt,
-          endsAt,
+          startsAt: calculatedStartsAt,
+          endsAt: calculatedEndsAt,
           images: {
             create: parsed.data.images.map((url, index) => ({
               url,
@@ -317,7 +341,13 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       }
 
       const now = new Date();
-      await refreshAuctionStatus(parsed.data.auctionId, tx, now);
+      const refreshed = await refreshAuctionStatus(parsed.data.auctionId, tx, now);
+      if ("success" in refreshed && refreshed.success === false) {
+        throw new BidFlowError(refreshed.code, refreshed.message, {
+          userId: user.id,
+          auctionId: parsed.data.auctionId,
+        });
+      }
 
       const auction = await tx.auction.findFirst({
         where: {
@@ -355,13 +385,27 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         });
       }
 
-      const statusError = await getBidStatusError(auction.id, auction.status, auction.startsAt, auction.endsAt, tx);
-      if (statusError) {
-        throw new BidFlowError(statusError.code, statusError.message, {
-          userId: user.id,
-          auctionId: auction.id,
-          status: auction.status,
-        });
+      if (auction.status !== AuctionStatus.ACTIVE) {
+        const message =
+          auction.status === AuctionStatus.PENDING
+            ? "Phiên đấu giá chưa bắt đầu."
+            : auction.status === AuctionStatus.COMPLETED
+              ? "Phiên đấu giá đã kết thúc."
+              : "Phiên đấu giá đã bị hủy.";
+
+        throw new BidFlowError(
+          auction.status === AuctionStatus.PENDING
+            ? "AUCTION_NOT_RUNNING"
+            : auction.status === AuctionStatus.COMPLETED
+              ? "AUCTION_ALREADY_FINISHED"
+              : "AUCTION_CANCELED",
+          message,
+          {
+            userId: user.id,
+            auctionId: auction.id,
+            status: auction.status,
+          },
+        );
       }
 
       if (parsed.data.expectedCurrentPrice && auction.currentPrice.toString() !== parsed.data.expectedCurrentPrice) {
@@ -660,6 +704,8 @@ export type SellerProductItem = {
   bidCount: number;
   watchlistCount: number;
   thumbnailUrl: string | null;
+  paidAt: string | null;
+  paidById: string | null;
   images: Array<{
     id: string;
     url: string;
@@ -700,6 +746,8 @@ export async function listSellerProducts(): Promise<ActionResult<SellerProductIt
         endsAt: true,
         createdAt: true,
         updatedAt: true,
+        paidAt: true,
+        paidById: true,
         images: {
           orderBy: {
             sortOrder: "asc",
@@ -743,6 +791,8 @@ export async function listSellerProducts(): Promise<ActionResult<SellerProductIt
         bidCount: auction._count.bids,
         watchlistCount: auction._count.watchlistItems,
         thumbnailUrl: auction.images[0]?.url ?? null,
+        paidAt: auction.paidAt?.toISOString() ?? null,
+        paidById: auction.paidById,
         images: auction.images,
       })),
     };
@@ -864,6 +914,8 @@ export async function listAuctions(filter?: { status?: string; sellerId?: string
         endsAt: true,
         createdAt: true,
         updatedAt: true,
+        paidAt: true,
+        paidById: true,
         seller: {
           select: {
             id: true,

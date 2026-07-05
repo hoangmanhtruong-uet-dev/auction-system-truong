@@ -20,7 +20,7 @@ export type FinalizeExpiredAuctionsResult = {
 };
 
 const VALID_TRANSITIONS: Record<AuctionStatus, AuctionStatus[]> = {
-  [AuctionStatus.PENDING]: [AuctionStatus.ACTIVE, AuctionStatus.CANCELLED],
+  [AuctionStatus.PENDING]: [AuctionStatus.ACTIVE, AuctionStatus.COMPLETED, AuctionStatus.CANCELLED],
   [AuctionStatus.ACTIVE]: [AuctionStatus.COMPLETED, AuctionStatus.CANCELLED],
   [AuctionStatus.COMPLETED]: [],
   [AuctionStatus.CANCELLED]: [],
@@ -94,6 +94,7 @@ export async function refreshAuctionStatus(
       status: true,
       startsAt: true,
       endsAt: true,
+      winnerId: true,
     },
   });
 
@@ -106,24 +107,37 @@ export async function refreshAuctionStatus(
   let completed = false;
 
   if (status === AuctionStatus.PENDING && auction.startsAt && auction.startsAt <= now) {
-    await client.auction.update({
-      where: { id: auction.id },
-      data: { status: AuctionStatus.ACTIVE, finishedAt: null },
-    });
+    if (auction.endsAt && auction.endsAt <= now) {
+      // PENDING with both startsAt AND endsAt in the past → go directly to COMPLETED
+      const finished = await finishAuction(auction.id, undefined, client, now);
+      if (isErrorResult(finished)) {
+        return finished;
+      }
 
-    await client.auditLog.create({
-      data: {
-        profileId: null,
-        action: AuditAction.AUCTION_ACTIVATED,
-        resourceType: "auction",
-        resourceId: auction.id,
-        oldValues: { status: auction.status },
-        newValues: { status: AuctionStatus.ACTIVE, activatedAt: now.toISOString() },
-      },
-    });
+      status = AuctionStatus.COMPLETED;
+      changed = true;
+      completed = true;
+    } else if (!auction.endsAt || auction.endsAt > now) {
+      // PENDING → ACTIVE (startsAt ≤ now < endsAt)
+      await client.auction.update({
+        where: { id: auction.id },
+        data: { status: AuctionStatus.ACTIVE, finishedAt: null },
+      });
 
-    status = AuctionStatus.ACTIVE;
-    changed = true;
+      await client.auditLog.create({
+        data: {
+          profileId: null,
+          action: AuditAction.AUCTION_ACTIVATED,
+          resourceType: "auction",
+          resourceId: auction.id,
+          oldValues: { status: auction.status },
+          newValues: { status: AuctionStatus.ACTIVE, activatedAt: now.toISOString() },
+        },
+      });
+
+      status = AuctionStatus.ACTIVE;
+      changed = true;
+    }
   }
 
   if (status === AuctionStatus.ACTIVE && auction.endsAt && auction.endsAt <= now) {
@@ -360,6 +374,7 @@ export async function markAuctionPaid(
       id: true,
       status: true,
       winnerId: true,
+      paidAt: true,
       title: true,
     },
   });
@@ -373,6 +388,9 @@ export async function markAuctionPaid(
   }
   if (!auction.winnerId) {
     return error("PAYMENT_NOT_ALLOWED", "Khong the danh dau thanh toan khi chua co nguoi thang.");
+  }
+  if (auction.paidAt) {
+    return auction;
   }
 
   const now = new Date();

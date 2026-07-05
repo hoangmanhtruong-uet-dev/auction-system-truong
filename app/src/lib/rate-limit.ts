@@ -7,6 +7,9 @@ export type RateLimitResult =
   | { allowed: true; remaining: number; resetAt: number }
   | { allowed: false; retryAfterSeconds: number; resetAt: number };
 
+// ponytail: In-memory Map tốt cho single-instance MVP.
+//   Khi deploy multi-instance, thay bằng Redis (ioredis) với cùng interface.
+//   Xem KNOWN_ISSUES.md mục "Remaining production risks".
 const buckets = new Map<string, RateLimitEntry>();
 
 function nowMs() {

@@ -46,11 +46,52 @@ export const CreateAuctionSchema = z
     duration: z.number().int("Thời gian đấu giá phải là số nguyên").min(5, "Thời gian đấu giá tối thiểu là 5 phút").max(10080, "Thời gian đấu giá tối đa là 7 ngày"),
     autoExtensionEnabled: z.boolean().default(true),
     maxExtensions: z.number().int().min(0).max(5).default(3),
+    // Optional scheduling fields
+    startsAt: z.string().optional(),
+    endsAt: z.string().optional(),
   })
   .refine((data) => data.bidStep <= data.startPrice, {
     message: "Bước giá không nên lớn hơn giá khởi điểm",
     path: ["bidStep"],
-  });
+  })
+  .refine(
+    (data) => {
+      // If startsAt is provided, endsAt must also be provided
+      if (data.startsAt && !data.endsAt) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Nếu có giờ bắt đầu thì phải có giờ kết thúc",
+      path: ["endsAt"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Validate startsAt and endsAt relationship if both provided
+      if (data.startsAt && data.endsAt) {
+        const starts = new Date(data.startsAt).getTime();
+        const ends = new Date(data.endsAt).getTime();
+        const durationMinutes = (ends - starts) / (1000 * 60);
+
+        // endsAt must be after startsAt
+        if (ends <= starts) {
+          return false;
+        }
+
+        // Duration must be within valid range (5 minutes to 7 days = 10080 minutes)
+        if (durationMinutes < 5 || durationMinutes > 10080) {
+          return false;
+        }
+      }
+      return true;
+    },
+    {
+      message: "Thời gian đấu giá phải từ 5 phút đến 7 ngày",
+      path: ["endsAt"],
+    }
+  );
 
 export type CreateAuctionInput = z.infer<typeof CreateAuctionSchema>;
 

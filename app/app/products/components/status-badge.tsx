@@ -1,7 +1,7 @@
 "use client";
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { Circle, Clock, CheckCircle, XCircle, Zap } from "lucide-react";
+import { Circle, Clock, CheckCircle, XCircle, Zap, ShieldCheck } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AuctionStatus } from "@prisma/client";
@@ -18,6 +18,7 @@ const statusVariants = cva(
         sold: "bg-indigo-50 text-indigo-700 ring-indigo-600/20 dark:bg-indigo-900/30 dark:text-indigo-400 dark:ring-indigo-500/30",
         ending: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/30",
         noBid: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/30",
+        paid: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-500/30",
       },
     },
     defaultVariants: {
@@ -39,6 +40,7 @@ interface ProductStatusBadgeProps extends VariantProps<typeof statusVariants> {
   status: AuctionStatus;
   hasBid?: boolean;
   endsAt?: string | null;
+  paidAt?: string | null;
   className?: string;
 }
 
@@ -46,17 +48,20 @@ export function ProductStatusBadge({
   status, 
   hasBid = false, 
   endsAt,
+  paidAt,
   className 
 }: ProductStatusBadgeProps) {
   const now = Date.now();
 
   let variant: StatusVariant = "pending";
   let Icon: React.ElementType = Circle;
+  let label: string = statusLabels[status] || status;
 
   switch (status) {
     case "PENDING":
       variant = "pending";
       Icon = Clock;
+      label = "Sắp diễn ra";
       break;
     case "ACTIVE":
       if (endsAt) {
@@ -64,6 +69,7 @@ export function ProductStatusBadge({
         if (endsDate > 0 && endsDate < now) {
           variant = "completed";
           Icon = CheckCircle;
+          label = "Đã kết thúc";
         } else if (endsDate > 0 && endsDate - now < 30 * 60 * 1000) {
           variant = "ending";
           Icon = Zap;
@@ -80,16 +86,22 @@ export function ProductStatusBadge({
       }
       break;
     case "COMPLETED":
-      variant = "completed";
-      Icon = CheckCircle;
+      if (paidAt) {
+        variant = "paid";
+        Icon = ShieldCheck;
+        label = "Đã thanh toán";
+      } else {
+        variant = "completed";
+        Icon = CheckCircle;
+        label = "Đã kết thúc";
+      }
       break;
     case "CANCELLED":
       variant = "cancelled";
       Icon = XCircle;
+      label = "Đã hủy";
       break;
   }
-
-  const label = statusLabels[status] || status;
 
   return (
     <div className={cn(statusVariants({ variant, className }))} style={{ gap: "6px" }}>
