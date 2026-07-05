@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { AuditAction } from "@prisma/client";
+import { AuditAction, UserRole } from "@prisma/client";
 
-import { requireAdmin } from "@/src/lib/auth";
+import { requireRole } from "@/src/lib/authorization";
 import { prisma } from "@/src/lib/prisma";
-import { createAuditLog } from "@/src/lib/audit";
+import { createAdminAuditLog } from "@/src/lib/audit";
 
 const AdminUserListSchema = z.object({
   take: z.number().int().positive().optional().default(50),
@@ -15,7 +15,10 @@ const AdminUserListSchema = z.object({
 });
 
 export async function getAdminUsers(input?: { take?: number; cursor?: string }) {
-  await requireAdmin();
+  const admin = await requireRole([UserRole.ADMIN]);
+  if (!("id" in admin)) {
+    throw new Error(admin.message);
+  }
 
   const parsed = AdminUserListSchema.safeParse(input);
   if (!parsed.success) {
@@ -56,11 +59,18 @@ export async function getAdminUsers(input?: { take?: number; cursor?: string }) 
   }
 }
 
-export async function toggleUserBlock(userId: string, block: boolean) {
-  await requireAdmin();
+export async function toggleUserBlock(userId: string, block: boolean, reason?: string) {
+  const user = await requireRole([UserRole.ADMIN]);
+  if (!("id" in user)) {
+    throw new Error(user.message);
+  }
 
   if (!userId || typeof userId !== "string") {
     throw new Error("Invalid user ID");
+  }
+
+  if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
+    throw new Error("Vui lòng nhập lý do hợp lệ cho thao tác quản trị (ít nhất 5 ký tự)");
   }
 
   try {
@@ -72,6 +82,7 @@ export async function toggleUserBlock(userId: string, block: boolean) {
       throw new Error("Người dùng không tồn tại");
     }
 
+    const previousStatus = profile.deletedAt ? "BLOCKED" : "ACTIVE";
     const updatedProfile = await prisma.profile.update({
       where: { id: userId },
       data: {
@@ -88,21 +99,25 @@ export async function toggleUserBlock(userId: string, block: boolean) {
       },
     });
 
-    await createAuditLog({
-      profileId: profile.id,
+    // Create admin audit log with reason
+    await createAdminAuditLog({
+      profileId: user.id,
       action: AuditAction.ADMIN_ACTION,
-      resourceType: "Profile",
+      resourceType: "profile",
       resourceId: profile.id,
       oldValues: {
         deletedAt: profile.deletedAt?.toISOString() ?? null,
+        previousStatus,
       },
       newValues: {
         operation: block ? "USER_BLOCKED" : "USER_UNBLOCKED",
         deletedAt: updatedProfile.deletedAt?.toISOString() ?? null,
+        adminReason: reason.trim(),
       },
     });
 
     revalidatePath("/admin/users");
+    revalidatePath("/admin");
 
     return {
       success: true,
@@ -110,6 +125,9 @@ export async function toggleUserBlock(userId: string, block: boolean) {
     };
   } catch (error) {
     console.error("Failed to toggle user block:", error);
+    if (error instanceof Error) {
+      throw error;
+    }
     throw new Error("Không thể thực hiện thao tác");
   }
 }

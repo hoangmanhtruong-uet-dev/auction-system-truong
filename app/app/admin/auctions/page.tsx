@@ -1,5 +1,7 @@
 import { listAdminAuctions } from "@/src/actions/admin-auctions";
 
+export const dynamic = "force-dynamic";
+
 type AdminAuctionsClientProps = {
   initialAuctions: Array<{ id: string | number; name?: string }> | null;
 };

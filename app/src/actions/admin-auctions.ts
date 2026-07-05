@@ -6,6 +6,7 @@ import { AuditAction, AuctionStatus } from "@prisma/client";
 import { requireAdmin } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { createAdminAuditLog } from "@/src/lib/audit";
+import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
 
 export type AdminAuction = {
   id: string;
@@ -25,6 +26,8 @@ export async function listAdminAuctions() {
   await requireAdmin();
 
   try {
+    await finalizeExpiredAuctions(prisma, 100);
+
     const auctions = await prisma.auction.findMany({
       where: {
         deletedAt: null,

@@ -3,7 +3,6 @@ import { AuctionStatus, Prisma, UserRole } from "@prisma/client";
 import { createAdminAuditLog } from "@/src/lib/audit";
 import { getCurrentUser, type SafeUser } from "@/src/lib/auth";
 import { error, type ErrorResult } from "@/src/lib/error-codes";
-import { isErrorResult } from "@/src/lib/error-handling";
 import { prisma } from "@/src/lib/prisma";
 
 function isError(r: SafeUser | ErrorResult): r is ErrorResult {
@@ -15,6 +14,11 @@ export async function requireAuth(): Promise<SafeUser | ErrorResult> {
 
   if (!user) {
     return error("UNAUTHENTICATED", "Bạn cần đăng nhập để tiếp tục.");
+  }
+
+  // Verify user is not soft-deleted
+  if (user.deletedAt !== null && user.deletedAt !== undefined) {
+    return error("USER_BLOCKED", "Tài khoản của bạn đã bị vô hiệu hóa.");
   }
 
   return user;
@@ -43,11 +47,12 @@ export async function assertAuctionOwner(auctionId: string, userId: string): Pro
     select: {
       id: true,
       sellerId: true,
+      status: true,
     },
   });
 
   if (!auction) {
-    return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
+    return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại hoặc đã bị xóa.");
   }
 
   if (auction.sellerId !== userId) {
@@ -63,6 +68,10 @@ export function assertNotSellerBidder(auction: { sellerId: string }, bidderId: s
   }
 
   return true;
+}
+
+export function canSellerBid(user: SafeUser, auction: { sellerId: string; status: AuctionStatus }): boolean {
+  return user.role === UserRole.ADMIN || (user.role === UserRole.USER && auction.sellerId !== user.id);
 }
 
 export function assertAdminActionReason(reason: unknown): true | ErrorResult {

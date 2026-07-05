@@ -1,106 +1,92 @@
-import { AuditAction, AuctionStatus, BidStatus, NotificationType, type PrismaClient } from "@prisma/client";
+import { AuditAction, AuctionStatus, BidStatus, NotificationType, type Prisma, type PrismaClient } from "@prisma/client";
 
-import { createAuditLog } from "@/src/lib/audit";
 import { error, type ErrorResult } from "@/src/lib/error-codes";
 import { prisma } from "@/src/lib/prisma";
 
-type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
+type AuctionDbClient = PrismaClient | Prisma.TransactionClient;
 
-/**
- * Valid state transitions for the current auction lifecycle.
- *
- * PENDING -> ACTIVE -> COMPLETED
- * PENDING -> CANCELLED
- * ACTIVE -> CANCELLED
- */
+const MAX_FINALIZE_BATCH = 200;
+
+export type RefreshAuctionStatusResult = {
+  auctionId: string;
+  status: AuctionStatus;
+  changed: boolean;
+  completed: boolean;
+};
+
+export type FinalizeExpiredAuctionsResult = {
+  processed: number;
+  completed: number;
+};
+
 const VALID_TRANSITIONS: Record<AuctionStatus, AuctionStatus[]> = {
   [AuctionStatus.PENDING]: [AuctionStatus.ACTIVE, AuctionStatus.CANCELLED],
   [AuctionStatus.ACTIVE]: [AuctionStatus.COMPLETED, AuctionStatus.CANCELLED],
-  [AuctionStatus.COMPLETED]: [AuctionStatus.CANCELLED],
+  [AuctionStatus.COMPLETED]: [],
   [AuctionStatus.CANCELLED]: [],
 };
 
-/**
- * Check if a status transition is valid.
- */
 export function canTransitionAuctionStatus(from: AuctionStatus, to: AuctionStatus): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-/**
- * Assert that a status transition is valid, returns error if not.
- */
-export function assertValidAuctionTransition(
-  from: AuctionStatus,
-  to: AuctionStatus,
-): true | ErrorResult {
+export function assertValidAuctionTransition(from: AuctionStatus, to: AuctionStatus): true | ErrorResult {
   if (!canTransitionAuctionStatus(from, to)) {
-    return error(
-      "INVALID_TRANSITION",
-      "Không thể chuyển đổi trạng thái phiên đấu giá từ " + from + " sang " + to,
-    );
+    return error("INVALID_TRANSITION", `Cannot transition auction status from ${from} to ${to}.`);
   }
 
   return true;
 }
 
-/**
- * Get error if bid cannot be placed based on auction status.
- * Also handles automatic status transitions (PENDING -> ACTIVE, ACTIVE -> COMPLETED).
- */
+function isErrorResult<T>(result: T | ErrorResult): result is ErrorResult {
+  return typeof result === "object" && result !== null && "success" in result && result.success === false;
+}
+
 export async function getBidStatusError(
   auctionId: string,
   status: AuctionStatus,
   startsAt: Date | null,
   endsAt: Date | null,
-  client: typeof prisma | Tx = prisma,
+  client: AuctionDbClient = prisma,
 ): Promise<ErrorResult | null> {
   const now = new Date();
   let adjustedStatus = status;
 
-  if (status === AuctionStatus.PENDING && startsAt && startsAt <= now) {
-    await client.auction.update({
-      where: { id: auctionId },
-      data: { status: AuctionStatus.ACTIVE, finishedAt: null },
-    });
-    adjustedStatus = AuctionStatus.ACTIVE;
-  }
-
-  if (adjustedStatus === AuctionStatus.ACTIVE && endsAt && endsAt <= now) {
-    await client.auction.update({
-      where: { id: auctionId },
-      data: { status: AuctionStatus.COMPLETED, finishedAt: now },
-    });
-    adjustedStatus = AuctionStatus.COMPLETED;
+  if (
+    (status === AuctionStatus.PENDING && startsAt && startsAt <= now) ||
+    (status === AuctionStatus.ACTIVE && endsAt && endsAt <= now)
+  ) {
+    const refreshed = await refreshAuctionStatus(auctionId, client, now);
+    if (isErrorResult(refreshed)) {
+      return refreshed;
+    }
+    adjustedStatus = refreshed.status;
   }
 
   if (adjustedStatus === AuctionStatus.PENDING) {
-    return error("AUCTION_NOT_RUNNING", "Phiên đấu giá chưa bắt đầu.");
+    return error("AUCTION_NOT_RUNNING", "Phien dau gia chua bat dau.");
   }
 
   if (adjustedStatus === AuctionStatus.COMPLETED) {
-    return error("AUCTION_ALREADY_FINISHED", "Phiên đấu giá đã kết thúc.");
+    return error("AUCTION_ALREADY_FINISHED", "Phien dau gia da ket thuc.");
   }
 
   if (adjustedStatus === AuctionStatus.CANCELLED) {
-    return error("AUCTION_CANCELED", "Phiên đấu giá đã bị hủy.");
+    return error("AUCTION_CANCELED", "Phien dau gia da bi huy.");
   }
 
   if (adjustedStatus !== AuctionStatus.ACTIVE) {
-    return error("INVALID_AUCTION_STATUS", "Trạng thái phiên đấu giá không hợp lệ.");
+    return error("INVALID_AUCTION_STATUS", "Trang thai phien dau gia khong hop le.");
   }
 
   return null;
 }
 
-/**
- * Refresh auction status based on current time.
- * Automatically transitions PENDING -> ACTIVE and ACTIVE -> COMPLETED if needed.
- */
 export async function refreshAuctionStatus(
   auctionId: string,
-  client: typeof prisma | Tx = prisma,
-): Promise<{ status: AuctionStatus; changed: boolean } | ErrorResult> {
+  client: AuctionDbClient = prisma,
+  now: Date = new Date(),
+): Promise<RefreshAuctionStatusResult | ErrorResult> {
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
     select: {
@@ -112,94 +98,106 @@ export async function refreshAuctionStatus(
   });
 
   if (!auction) {
-    return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
+    return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
   }
 
-  const now = new Date();
+  let status = auction.status;
   let changed = false;
-  let newStatus = auction.status;
+  let completed = false;
 
-  if (auction.status === AuctionStatus.PENDING && auction.startsAt && auction.startsAt <= now) {
+  if (status === AuctionStatus.PENDING && auction.startsAt && auction.startsAt <= now) {
     await client.auction.update({
       where: { id: auction.id },
-      data: { status: AuctionStatus.ACTIVE },
+      data: { status: AuctionStatus.ACTIVE, finishedAt: null },
     });
-    newStatus = AuctionStatus.ACTIVE;
+
+    await client.auditLog.create({
+      data: {
+        profileId: null,
+        action: AuditAction.AUCTION_ACTIVATED,
+        resourceType: "auction",
+        resourceId: auction.id,
+        oldValues: { status: auction.status },
+        newValues: { status: AuctionStatus.ACTIVE, activatedAt: now.toISOString() },
+      },
+    });
+
+    status = AuctionStatus.ACTIVE;
     changed = true;
   }
 
-  if (auction.status === AuctionStatus.ACTIVE && auction.endsAt && auction.endsAt <= now) {
-    const winningBid = await client.bid.findFirst({
-      where: {
-        auctionId: auction.id,
-        deletedAt: null,
-        status: BidStatus.ACTIVE,
-      },
-      orderBy: { amount: "desc" },
-    });
-
-    await client.auction.update({
-      where: { id: auction.id },
-      data: {
-        status: AuctionStatus.COMPLETED,
-        winnerId: winningBid?.bidderId ?? null,
-        finishedAt: now,
-      },
-    });
-
-    if (winningBid) {
-      await client.bid.update({
-        where: { id: winningBid.id },
-        data: { status: BidStatus.WON },
-      });
+  if (status === AuctionStatus.ACTIVE && auction.endsAt && auction.endsAt <= now) {
+    const finished = await finishAuction(auction.id, undefined, client, now);
+    if (isErrorResult(finished)) {
+      return finished;
     }
 
-    newStatus = AuctionStatus.COMPLETED;
+    status = AuctionStatus.COMPLETED;
     changed = true;
+    completed = true;
   }
 
-  return { status: newStatus, changed };
+  return { auctionId: auction.id, status, changed, completed };
 }
 
-/**
- * Mark auction as finished.
- * This is typically called when the auction ends (automatically or manually).
- * Sets winnerId to the highest active bid if one exists.
- */
 export async function finishAuction(
   auctionId: string,
   actorId?: string,
-  client: typeof prisma | Tx = prisma,
+  client: AuctionDbClient = prisma,
+  now: Date = new Date(),
 ) {
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
     include: {
       bids: {
-        where: { deletedAt: null, status: BidStatus.ACTIVE },
-        orderBy: { amount: "desc" },
+        where: {
+          deletedAt: null,
+          status: { not: BidStatus.CANCELLED },
+        },
+        orderBy: [{ amount: "desc" }, { createdAt: "asc" }],
         take: 1,
       },
     },
   });
 
-  if (!auction) return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
+  if (!auction) {
+    return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
+  }
 
-  const transition = assertValidAuctionTransition(auction.status, AuctionStatus.COMPLETED);
-  if (transition !== true) return transition;
+  if (auction.status === AuctionStatus.CANCELLED) {
+    return error("AUCTION_CANCELED", "Phien dau gia da bi huy.");
+  }
 
-  const winningBid = auction.bids[0];
-  const now = new Date();
+  if (auction.status !== AuctionStatus.COMPLETED) {
+    const transition = assertValidAuctionTransition(auction.status, AuctionStatus.COMPLETED);
+    if (transition !== true) {
+      return transition;
+    }
+  }
+
+  const winningBid = auction.bids[0] ?? null;
+  const winnerId = winningBid?.bidderId ?? null;
+  const finishedAt = auction.finishedAt ?? now;
+  const shouldNotifyAndAudit = auction.status !== AuctionStatus.COMPLETED || !auction.finishedAt;
 
   const updated = await client.auction.update({
     where: { id: auctionId },
     data: {
       status: AuctionStatus.COMPLETED,
-      winnerId: winningBid?.bidderId ?? null,
-      finishedAt: now,
+      winnerId,
+      finishedAt,
     },
   });
 
-  // Update winning bid status
+  await client.bid.updateMany({
+    where: {
+      auctionId,
+      deletedAt: null,
+      status: { not: BidStatus.CANCELLED },
+    },
+    data: { status: BidStatus.LOST },
+  });
+
   if (winningBid) {
     await client.bid.update({
       where: { id: winningBid.id },
@@ -207,17 +205,50 @@ export async function finishAuction(
     });
   }
 
-  if (actorId) {
-    await createAuditLog({
-      profileId: actorId,
-      action: AuditAction.AUCTION_COMPLETED,
-      resourceType: "auction",
-      resourceId: auctionId,
-      oldValues: { status: auction.status },
-      newValues: {
-        status: updated.status,
-        winnerId: updated.winnerId,
-        finishedAt: now.toISOString(),
+  if (shouldNotifyAndAudit) {
+    await client.notification.create({
+      data: {
+        profileId: auction.sellerId,
+        auctionId,
+        type: NotificationType.AUCTION_ENDED,
+        title: "Phien dau gia da ket thuc",
+        message: winnerId
+          ? `Phien dau gia "${auction.title}" da ket thuc va co nguoi thang.`
+          : `Phien dau gia "${auction.title}" da ket thuc nhung chua co luot dat gia.`,
+        metadata: { auctionId, winnerId },
+      },
+    });
+
+    if (winnerId) {
+      await client.notification.create({
+        data: {
+          profileId: winnerId,
+          auctionId,
+          type: NotificationType.BID_WON,
+          title: "Ban da thang phien dau gia",
+          message: `Chuc mung! Ban da thang phien dau gia "${auction.title}".`,
+          metadata: { auctionId, bidId: winningBid?.id },
+        },
+      });
+    }
+
+    await client.auditLog.create({
+      data: {
+        profileId: actorId ?? winnerId ?? auction.sellerId,
+        action: AuditAction.AUCTION_COMPLETED,
+        resourceType: "auction",
+        resourceId: auctionId,
+        oldValues: {
+          status: auction.status,
+          winnerId: auction.winnerId,
+          finishedAt: auction.finishedAt?.toISOString() ?? null,
+        },
+        newValues: {
+          status: updated.status,
+          winnerId: updated.winnerId,
+          winningBidId: winningBid?.id ?? null,
+          finishedAt: updated.finishedAt?.toISOString() ?? finishedAt.toISOString(),
+        },
       },
     });
   }
@@ -225,15 +256,104 @@ export async function finishAuction(
   return updated;
 }
 
-/**
- * Mark auction as paid after winner has completed payment.
- * Only valid when auction is FINISHED and has a winner.
- */
+export async function finalizeExpiredAuctions(
+  client: AuctionDbClient = prisma,
+  limit: number = MAX_FINALIZE_BATCH,
+): Promise<FinalizeExpiredAuctionsResult> {
+  const now = new Date();
+  const auctions = await client.auction.findMany({
+    where: {
+      deletedAt: null,
+      status: { in: [AuctionStatus.PENDING, AuctionStatus.ACTIVE] },
+      OR: [
+        { status: AuctionStatus.PENDING, startsAt: { lte: now } },
+        { status: AuctionStatus.ACTIVE, endsAt: { lte: now } },
+      ],
+    },
+    select: { id: true },
+    orderBy: [{ endsAt: "asc" }, { startsAt: "asc" }],
+    take: limit,
+  });
+
+  let processed = 0;
+  let completed = 0;
+
+  for (const auction of auctions) {
+    const refreshLockedAuction = async (db: AuctionDbClient) => {
+      const locked = await db.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+        FROM auctions
+        WHERE id = ${auction.id}::uuid
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+
+      if (locked.length === 0) {
+        return null;
+      }
+
+      return refreshAuctionStatus(auction.id, db, now);
+    };
+
+    const result = client === prisma
+      ? await prisma.$transaction(async (tx) => refreshLockedAuction(tx))
+      : await refreshLockedAuction(client);
+
+    if (!result || isErrorResult(result)) {
+      continue;
+    }
+
+    processed++;
+    if (result.completed) {
+      completed++;
+    }
+  }
+
+  return { processed, completed };
+}
+
+export async function getAuctionWithFreshStatus(auctionId: string) {
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM auctions
+      WHERE id = ${auctionId}::uuid
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `;
+
+    if (locked.length === 0) {
+      return null;
+    }
+
+    const refreshed = await refreshAuctionStatus(auctionId, tx);
+    if (isErrorResult(refreshed)) {
+      return null;
+    }
+
+    return tx.auction.findFirst({
+      where: { id: auctionId, deletedAt: null },
+      select: {
+        id: true,
+        status: true,
+        winnerId: true,
+        finishedAt: true,
+        updatedAt: true,
+      },
+    });
+  });
+}
+
 export async function markAuctionPaid(
   auctionId: string,
   actorId: string,
-  client: typeof prisma | Tx = prisma,
+  client: AuctionDbClient = prisma,
 ) {
+  const refreshed = await refreshAuctionStatus(auctionId, client);
+  if (isErrorResult(refreshed)) {
+    return refreshed;
+  }
+
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
     select: {
@@ -244,13 +364,16 @@ export async function markAuctionPaid(
     },
   });
 
-  if (!auction) return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
-  if (auction.status === AuctionStatus.CANCELLED)
-    return error("PAYMENT_NOT_ALLOWED", "Phiên đấu giá đã bị hủy, không thể đánh dấu đã thanh toán.");
-  if (auction.status !== AuctionStatus.COMPLETED)
-    return error("PAYMENT_NOT_ALLOWED", "Chỉ phiên đấu giá đã kết thúc mới được đánh dấu đã thanh toán.");
-  if (!auction.winnerId)
-    return error("PAYMENT_NOT_ALLOWED", "Không thể đánh dấu thanh toán khi chưa có người thắng.");
+  if (!auction) return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
+  if (auction.status === AuctionStatus.CANCELLED) {
+    return error("PAYMENT_NOT_ALLOWED", "Phien dau gia da bi huy, khong the danh dau da thanh toan.");
+  }
+  if (auction.status !== AuctionStatus.COMPLETED) {
+    return error("PAYMENT_NOT_ALLOWED", "Chi phien dau gia da ket thuc moi duoc danh dau da thanh toan.");
+  }
+  if (!auction.winnerId) {
+    return error("PAYMENT_NOT_ALLOWED", "Khong the danh dau thanh toan khi chua co nguoi thang.");
+  }
 
   const now = new Date();
   const updated = await client.auction.update({
@@ -258,62 +381,55 @@ export async function markAuctionPaid(
     data: {
       paidAt: now,
       paidById: actorId,
-    } as any,
-  });
-
-  // Create notification for winner and seller
-  await client.notification.create({
-    data: {
-      profileId: auction.winnerId!,
-      type: NotificationType.SYSTEM,
-      title: "Giao dịch đã thanh toán",
-      message: `Chúc mừng! Bạn đã thanh toán thành công phiên đấu giá "${auction.title}".`,
-      metadata: { auctionId: auctionId },
     },
   });
 
   await client.notification.create({
     data: {
-      profileId: auction.winnerId!,
-      type: NotificationType.SYSTEM,
-      title: "Giao dịch đã thanh toán",
-      message: `Người bán đã xác nhận thanh toán cho phiên đấu giá "${auction.title}".`,
-      metadata: { auctionId: auctionId },
+      profileId: auction.winnerId,
+      auctionId,
+      type: NotificationType.AUCTION_PAID,
+      title: "Giao dich da thanh toan",
+      message: `Phien dau gia "${auction.title}" da duoc danh dau da thanh toan.`,
+      metadata: { auctionId },
     },
   });
 
-  await createAuditLog({
-    profileId: actorId,
-    action: AuditAction.ADMIN_ACTION,
-    resourceType: "auction",
-    resourceId: auctionId,
-    oldValues: { status: auction.status },
-    newValues: {
-      status: updated.status,
-      paidAt: now.toISOString(),
-      paidById: actorId,
+  await client.notification.create({
+    data: {
+      profileId: actorId,
+      auctionId,
+      type: NotificationType.AUCTION_PAID,
+      title: "Giao dich da thanh toan",
+      message: `Ban da xac nhan thanh toan cho phien dau gia "${auction.title}".`,
+      metadata: { auctionId },
+    },
+  });
+
+  await client.auditLog.create({
+    data: {
+      profileId: actorId,
+      action: AuditAction.ADMIN_ACTION,
+      resourceType: "auction",
+      resourceId: auctionId,
+      oldValues: { status: auction.status },
+      newValues: {
+        status: updated.status,
+        paidAt: now.toISOString(),
+        paidById: actorId,
+      },
     },
   });
 
   return updated;
 }
 
-/**
- * Cancel an auction.
- * 
- * Rules:
- * - Seller can only cancel OPEN auctions with no bids
- * - Admin can cancel any auction (OPEN/RUNNING/FINISHED) but must provide a reason
- * - Cannot cancel PAID auctions (unless dispute system is implemented)
- * - Cannot cancel already cancelled auctions
- * - All cancel operations must create audit logs
- */
 export async function cancelAuction(
   auctionId: string,
   actorId: string,
   reason: string,
   options: { requireNoBids?: boolean } = {},
-  client: typeof prisma | Tx = prisma,
+  client: AuctionDbClient = prisma,
 ) {
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
@@ -327,24 +443,20 @@ export async function cancelAuction(
     },
   });
 
-  if (!auction) return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
-  if (auction.status === AuctionStatus.CANCELLED)
-    return error("AUCTION_CANCELED", "Phiên đấu giá đã bị hủy.");
+  if (!auction) return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
+  if (auction.status === AuctionStatus.CANCELLED) {
+    return error("AUCTION_CANCELED", "Phien dau gia da bi huy.");
+  }
 
-  // Check seller cancel rules: only PENDING with no bids
-  if (auction.sellerId === actorId) {
+  if (auction.sellerId === actorId || options.requireNoBids) {
     if (auction.status !== AuctionStatus.PENDING) {
-      return error("CANCEL_NOT_ALLOWED", "Chỉ có thể hủy khi phiên đang ở trạng thái Sắp diễn ra.");
+      return error("CANCEL_NOT_ALLOWED", "Chi co the huy khi phien dang o trang thai sap dien ra.");
     }
     if (auction._count.bids > 0) {
-      return error("CANCEL_NOT_ALLOWED", "Không thể hủy phiên đấu giá đã có người đặt giá.");
+      return error("CANCEL_NOT_ALLOWED", "Khong the huy phien dau gia da co nguoi dat gia.");
     }
   }
 
-  // Check admin cancel: must have a reason
-  // (This is handled by validation in the action layer)
-
-  // Check transition validity
   const transition = assertValidAuctionTransition(auction.status, AuctionStatus.CANCELLED);
   if (transition !== true) return transition;
 
@@ -359,25 +471,25 @@ export async function cancelAuction(
     },
   });
 
-  // Create audit log
-  await createAuditLog({
-    profileId: actorId,
-    action: AuditAction.AUCTION_CANCELLED,
-    resourceType: "auction",
-    resourceId: auctionId,
-    oldValues: { status: auction.status },
-    newValues: {
-      status: updated.status,
-      canceledAt: now.toISOString(),
-      canceledById: actorId,
-      cancelReason: reason,
+  await client.auditLog.create({
+    data: {
+      profileId: actorId,
+      action: AuditAction.AUCTION_CANCELLED,
+      resourceType: "auction",
+      resourceId: auctionId,
+      oldValues: { status: auction.status },
+      newValues: {
+        status: updated.status,
+        canceledAt: now.toISOString(),
+        canceledById: actorId,
+        cancelReason: reason,
+      },
     },
   });
 
-  // Update any active bids to cancelled
   await client.bid.updateMany({
     where: {
-      auctionId: auctionId,
+      auctionId,
       deletedAt: null,
       status: BidStatus.ACTIVE,
     },
@@ -387,9 +499,6 @@ export async function cancelAuction(
   return updated;
 }
 
-/**
- * Update an auction (seller can only update when OPEN and no bids).
- */
 export async function updateAuction(
   auctionId: string,
   actorId: string,
@@ -401,7 +510,7 @@ export async function updateAuction(
     category?: string;
     condition?: string;
   },
-  client: typeof prisma | Tx = prisma,
+  client: AuctionDbClient = prisma,
 ) {
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
@@ -412,35 +521,28 @@ export async function updateAuction(
     },
   });
 
-  if (!auction) return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
+  if (!auction) return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
 
-  // Only seller can update, and only when PENDING with no bids
   if (auction.sellerId !== actorId) {
-    return error("FORBIDDEN", "Bạn không có quyền cập nhật phiên đấu giá này.");
+    return error("FORBIDDEN", "Ban khong co quyen cap nhat phien dau gia nay.");
   }
   if (auction.status !== AuctionStatus.PENDING) {
-    return error("INVALID_TRANSITION", "Chỉ có thể cập nhật khi phiên đang ở trạng thái Sắp diễn ra.");
+    return error("INVALID_TRANSITION", "Chi co the cap nhat khi phien dang o trang thai sap dien ra.");
   }
   if (auction._count.bids > 0) {
-    return error("INVALID_TRANSITION", "Không thể cập nhật khi đã có người đặt giá.");
+    return error("INVALID_TRANSITION", "Khong the cap nhat khi da co nguoi dat gia.");
   }
 
-  const updated = await client.auction.update({
+  return client.auction.update({
     where: { id: auctionId },
     data,
   });
-
-  return updated;
 }
 
-/**
- * Delete/hide an auction (soft delete).
- * Seller can delete when OPEN with no bids, or when CANCELED.
- */
 export async function deleteAuction(
   auctionId: string,
   actorId: string,
-  client: typeof prisma | Tx = prisma,
+  client: AuctionDbClient = prisma,
 ) {
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
@@ -451,30 +553,25 @@ export async function deleteAuction(
     },
   });
 
-  if (!auction) return error("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.");
+  if (!auction) return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
 
-  // Only seller can delete
   if (auction.sellerId !== actorId) {
-    return error("FORBIDDEN", "Bạn không có quyền xóa phiên đấu giá này.");
+    return error("FORBIDDEN", "Ban khong co quyen xoa phien dau gia nay.");
   }
 
-  // Can only delete if PENDING with no bids, or already CANCELLED
   const canDelete =
     (auction.status === AuctionStatus.PENDING && auction._count.bids === 0) ||
     auction.status === AuctionStatus.CANCELLED;
 
   if (!canDelete) {
-    return error("INVALID_TRANSITION", "Chỉ có thể xóa khi chưa có bid hoặc đã bị hủy.");
+    return error("INVALID_TRANSITION", "Chi co the xoa khi chua co bid hoac da bi huy.");
   }
 
-  const now = new Date();
-  const updated = await client.auction.update({
+  return client.auction.update({
     where: { id: auctionId },
     data: {
-      deletedAt: now,
+      deletedAt: new Date(),
       status: AuctionStatus.CANCELLED,
     },
   });
-
-  return updated;
 }

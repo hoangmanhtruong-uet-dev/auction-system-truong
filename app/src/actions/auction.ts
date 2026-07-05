@@ -6,9 +6,9 @@ import type { Prisma } from "@prisma/client";
 
 import { formatCurrency } from "@/lib/utils";
 import { getCurrentUser } from "@/src/lib/auth";
-import { getBidStatusError } from "@/src/lib/auction-lifecycle";
+import { finalizeExpiredAuctions, getAuctionWithFreshStatus, getBidStatusError, refreshAuctionStatus } from "@/src/lib/auction-lifecycle";
 import { assertNotSellerBidder } from "@/src/lib/authorization";
-import { error, success, type AppErrorCode } from "@/src/lib/error-codes";
+import { error, type AppErrorCode } from "@/src/lib/error-codes";
 import { logError, normalizeError } from "@/src/lib/error-handling";
 import { prisma } from "@/src/lib/prisma";
 import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
@@ -305,6 +305,9 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         });
       }
 
+      const now = new Date();
+      await refreshAuctionStatus(parsed.data.auctionId, tx, now);
+
       const auction = await tx.auction.findFirst({
         where: {
           id: parsed.data.auctionId,
@@ -341,7 +344,6 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         });
       }
 
-      const now = new Date();
       const statusError = await getBidStatusError(auction.id, auction.status, auction.startsAt, auction.endsAt, tx);
       if (statusError) {
         throw new BidFlowError(statusError.code, statusError.message, {
@@ -691,6 +693,11 @@ export async function cancelAutoBid(auctionId: string): Promise<ActionResult<{ a
 
 export async function getAuctionById(auctionId: string) {
   try {
+    await getAuctionWithFreshStatus(auctionId);
+  } catch {
+    // Keep existing behavior: return auction serialization if possible
+  }
+  try {
     const auction = await prisma.auction.findFirst({
       where: {
         id: auctionId,
@@ -811,6 +818,8 @@ export async function listSellerProducts(): Promise<ActionResult<SellerProductIt
   }
 
   try {
+    await finalizeExpiredAuctions(prisma, 100);
+
     const auctions = await prisma.auction.findMany({
       where: {
         sellerId: user.id,
@@ -954,6 +963,12 @@ export async function deleteSellerProduct(auctionId: string): Promise<ActionResu
 }
 
 export async function listAuctions(filter?: { status?: string; sellerId?: string; take?: number }) {
+  try {
+    await finalizeExpiredAuctions(prisma, 100);
+  } catch {
+    // Keep list reads available even if a background lifecycle refresh fails.
+  }
+
   try {
     const status = normalizeStatus(filter?.status);
     const auctions = await prisma.auction.findMany({

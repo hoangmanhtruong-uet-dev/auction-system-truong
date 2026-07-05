@@ -21,6 +21,7 @@ export type SafeUser = {
   gender: string | null;
   birthday: Date | null;
   bio: string | null;
+  deletedAt: Date | null;
 };
 
 export async function getSessionUserId(): Promise<string | null> {
@@ -66,6 +67,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
           gender: true,
           birthday: true,
           bio: true,
+          deletedAt: true,
       },
     });
 

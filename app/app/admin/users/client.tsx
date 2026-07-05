@@ -5,6 +5,16 @@ import { Ban, CheckCircle2, Shield, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 type AdminUser = {
   id: string;
@@ -42,16 +52,34 @@ function formatDateTime(dateStr: string): string {
 export function AdminUsersClient({ initialUsers }: { initialUsers: AdminUser[] }) {
   const [users, setUsers] = useState<AdminUser[]>(initialUsers);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [dialogUserId, setDialogUserId] = useState<string | null>(null);
+  const [dialogCurrentBlocked, setDialogCurrentBlocked] = useState(false);
+  const [dialogReason, setDialogReason] = useState("");
+  const [dialogError, setDialogError] = useState("");
 
-  const handleToggleBlock = useCallback(async (userId: string, currentBlocked: boolean) => {
-    setLoadingId(userId);
+  const openBlockDialog = useCallback((userId: string, currentBlocked: boolean) => {
+    setDialogUserId(userId);
+    setDialogCurrentBlocked(currentBlocked);
+    setDialogReason("");
+    setDialogError("");
+  }, []);
+
+  const handleToggleBlock = useCallback(async () => {
+    if (!dialogUserId) return;
+    if (dialogReason.trim().length < 5) {
+      setDialogError("Lý do phải có ít nhất 5 ký tự.");
+      return;
+    }
+
+    setLoadingId(dialogUserId);
+    setDialogUserId(null);
     try {
       const { toggleUserBlock } = await import("@/src/actions/admin-users");
-      const result = await toggleUserBlock(userId, !currentBlocked);
+      const result = await toggleUserBlock(dialogUserId, !dialogCurrentBlocked, dialogReason);
       if (result.success) {
         setUsers((prev) =>
           prev.map((u) =>
-            u.id === userId
+            u.id === dialogUserId
               ? {
                   ...u,
                   deletedAt: result.user.deletedAt ? result.user.deletedAt.toISOString() : null,
@@ -65,7 +93,7 @@ export function AdminUsersClient({ initialUsers }: { initialUsers: AdminUser[] }
     } finally {
       setLoadingId(null);
     }
-  }, []);
+  }, [dialogUserId, dialogCurrentBlocked, dialogReason]);
 
   if (users.length === 0) {
     return (
@@ -163,7 +191,7 @@ export function AdminUsersClient({ initialUsers }: { initialUsers: AdminUser[] }
                             ? "Mở khóa người dùng"
                             : "Khóa người dùng"
                         }
-                        onClick={() => handleToggleBlock(user.id, !!user.deletedAt)}
+                        onClick={() => openBlockDialog(user.id, !!user.deletedAt)}
                       >
                         {loadingId === user.id
                           ? "..."
@@ -179,6 +207,44 @@ export function AdminUsersClient({ initialUsers }: { initialUsers: AdminUser[] }
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={dialogUserId !== null} onOpenChange={(open) => { if (!open) setDialogUserId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {dialogCurrentBlocked ? "Mở khóa người dùng" : "Khóa người dùng"}
+            </DialogTitle>
+            <DialogDescription>
+              Vui lòng nhập lý do cho thao tác quản trị này.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="reason">Lý do</Label>
+            <Textarea
+              id="reason"
+              value={dialogReason}
+              onChange={(e) => { setDialogReason(e.target.value); setDialogError(""); }}
+              placeholder="Nhập lý do thao tác (ít nhất 5 ký tự)..."
+              rows={3}
+            />
+            {dialogError && (
+              <p className="text-sm text-destructive">{dialogError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogUserId(null)}>
+              Hủy
+            </Button>
+            <Button
+              variant={dialogCurrentBlocked ? "outline" : "destructive"}
+              onClick={handleToggleBlock}
+              disabled={loadingId === dialogUserId}
+            >
+              {loadingId === dialogUserId ? "..." : "Xác nhận"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
