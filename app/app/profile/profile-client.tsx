@@ -56,8 +56,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDateTime, formatRemainingTime } from "@/lib/utils";
 import { logout } from "@/src/actions/auth";
 import {
+  changePassword,
   deleteAccount,
+  logoutAllDevices,
   markAllNotificationsRead,
+  updateAvatar,
   updateNotifications,
   updateProfile,
 } from "@/src/actions/profile";
@@ -497,16 +500,59 @@ export function ProfileClient({
                       {getInitials(user.fullName) || <User className="h-8 w-8" />}
                     </AvatarFallback>
                   </Avatar>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handlePlaceholderAction("Chức năng đổi ảnh đại diện chưa kết nối backend")
-                    }
-                    className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full bg-background shadow-lg ring-1 ring-foreground/10 transition hover:scale-105 hover:bg-muted"
-                    aria-label="Đổi ảnh đại diện"
-                  >
+                  <label className="absolute bottom-1 right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-background shadow-lg ring-1 ring-foreground/10 transition hover:scale-105 hover:bg-muted" aria-label="Đổi ảnh đại diện">
                     <Camera className="h-4 w-4" />
-                  </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isPending}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        // Validate file size (max 2MB)
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast.error("Ảnh phải nhỏ hơn 2MB");
+                          if (e.target) e.target.value = "";
+                          return;
+                        }
+
+                        // Validate file type
+                        const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+                        if (!allowedTypes.includes(file.type)) {
+                          toast.error("Chỉ chấp nhận ảnh JPG, PNG, GIF hoặc WebP");
+                          if (e.target) e.target.value = "";
+                          return;
+                        }
+
+                        // Convert file to base64 data URL for small avatars
+                        // In production, this would use a proper upload endpoint
+                        try {
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            const dataUrl = event.target?.result as string;
+                            if (dataUrl && dataUrl.length < 200000) {
+                              const result = await updateAvatar(dataUrl);
+                              if (result.success) {
+                                toast.success("Đã cập nhật ảnh đại diện");
+                                router.refresh();
+                              } else {
+                                toast.error(result.error);
+                              }
+                            } else {
+                              toast.error("Ảnh quá lớn để lưu trực tiếp, vui lòng dùng ảnh nhỏ hơn");
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        } catch {
+                          toast.error("Lỗi khi xử lý ảnh");
+                        } finally {
+                          if (e.target) e.target.value = "";
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
 
                 <div className="min-w-0 pb-1">
@@ -573,9 +619,27 @@ export function ProfileClient({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    handlePlaceholderAction("Chức năng đổi mật khẩu chưa được triển khai")
-                  }
+                  onClick={() => {
+                    const currentPassword = window.prompt("Nhập mật khẩu hiện tại:");
+                    if (!currentPassword) return;
+                    const newPassword = window.prompt("Nhập mật khẩu mới:");
+                    if (!newPassword || newPassword.length < 8) {
+                      toast.error("Mật khẩu mới phải có ít nhất 8 ký tự");
+                      return;
+                    }
+                    startTransition(async () => {
+                      const result = await changePassword({
+                        currentPassword,
+                        newPassword,
+                      });
+                      if (result.success) {
+                        toast.success("Đã đổi mật khẩu thành công");
+                        router.refresh();
+                      } else {
+                        toast.error(result.error);
+                      }
+                    });
+                  }}
                 >
                   <KeyRound className="mr-2 h-4 w-4" />
                   Đổi mật khẩu
@@ -1000,20 +1064,46 @@ export function ProfileClient({
                   />
                   <div className="flex flex-col gap-2 pt-2 sm:flex-row">
                     <Button
-                      onClick={() =>
-                        handlePlaceholderAction("Chức năng đổi mật khẩu chưa có API")
-                      }
+                      onClick={() => {
+                        const currentPassword = window.prompt("Nhập mật khẩu hiện tại:");
+                        if (!currentPassword) return;
+                        const newPassword = window.prompt("Nhập mật khẩu mới:");
+                        if (!newPassword || newPassword.length < 8) {
+                          toast.error("Mật khẩu mới phải có ít nhất 8 ký tự");
+                          return;
+                        }
+                        startTransition(async () => {
+                          const result = await changePassword({
+                            currentPassword,
+                            newPassword,
+                          });
+                          if (result.success) {
+                            toast.success("Đã đổi mật khẩu thành công");
+                            router.refresh();
+                          } else {
+                            toast.error(result.error);
+                          }
+                        });
+                      }}
                     >
                       <KeyRound className="mr-2 h-4 w-4" />
                       Đổi mật khẩu
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() =>
-                        handlePlaceholderAction(
-                          "Chức năng đăng xuất khỏi tất cả thiết bị chưa có API"
-                        )
-                      }
+                      onClick={() => {
+                        const confirmed = window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi tất cả thiết bị?");
+                        if (!confirmed) return;
+                        startTransition(async () => {
+                          const result = await logoutAllDevices();
+                          if (result.success) {
+                            toast.success("Đã đăng xuất khỏi tất cả thiết bị");
+                            router.refresh();
+                          } else {
+                            toast.error(result.error);
+                          }
+                        });
+                      }}
                     >
                       Đăng xuất tất cả thiết bị
                     </Button>
