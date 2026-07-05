@@ -109,7 +109,19 @@ function normalizeStatus(status?: string): AuctionStatus | undefined {
 }
 
 function serializeAuctionListItem(
-  auction: Awaited<ReturnType<typeof prisma.auction.findMany>>[number] & {
+  auction: {
+    id: string;
+    title: string;
+    description: string;
+    startPrice: bigint;
+    currentPrice: bigint;
+    bidStep: bigint;
+    status: AuctionStatus;
+    sellerId: string;
+    startsAt: Date | null;
+    endsAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
     seller: { id: string; fullName: string; avatarUrl: string | null };
     images: Array<{ id: string; url: string; altText: string | null; sortOrder: number }>;
     _count: { bids: number };
@@ -825,14 +837,30 @@ export async function listSellerProducts(): Promise<ActionResult<SellerProductIt
   }
 
   try {
-    await finalizeExpiredAuctions(prisma, 100);
+    try {
+      await finalizeExpiredAuctions(prisma, 100);
+    } catch (refreshError) {
+      console.error("List seller products lifecycle refresh failed:", refreshError);
+    }
 
     const auctions = await prisma.auction.findMany({
       where: {
         sellerId: user.id,
         deletedAt: null,
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        startPrice: true,
+        currentPrice: true,
+        status: true,
+        sellerId: true,
+        winnerId: true,
+        startsAt: true,
+        endsAt: true,
+        createdAt: true,
+        updatedAt: true,
         images: {
           orderBy: {
             sortOrder: "asc",
@@ -984,7 +1012,19 @@ export async function listAuctions(filter?: { status?: string; sellerId?: string
         ...(status ? { status } : {}),
         ...(filter?.sellerId ? { sellerId: filter.sellerId } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        startPrice: true,
+        currentPrice: true,
+        bidStep: true,
+        status: true,
+        sellerId: true,
+        startsAt: true,
+        endsAt: true,
+        createdAt: true,
+        updatedAt: true,
         seller: {
           select: {
             id: true,
