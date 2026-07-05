@@ -25,6 +25,7 @@ export default async function ProfilePage() {
     watchlistItems,
     notifications,
     auditLogs,
+    userPreference,
   ] = await Promise.all([
     prisma.auction.count({
       where: {
@@ -191,6 +192,16 @@ export default async function ProfilePage() {
         createdAt: true,
       },
     }),
+    prisma.userPreference.upsert({
+      where: { profileId: user.id },
+      update: {},
+      create: { profileId: user.id },
+      select: {
+        receiveEmailMarketing: true,
+        receiveEmailAuction: true,
+        receiveEmailNotification: true,
+      },
+    }),
   ]);
 
   const totalBidValue = recentBids.reduce(
@@ -275,6 +286,7 @@ export default async function ProfilePage() {
         resourceType: log.resourceType,
         createdAt: log.createdAt.toISOString(),
       }))}
+      userPreference={userPreference}
     />
   );
 }

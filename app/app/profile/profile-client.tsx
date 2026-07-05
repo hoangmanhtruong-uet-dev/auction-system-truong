@@ -55,7 +55,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDateTime, formatRemainingTime } from "@/lib/utils";
 import { logout } from "@/src/actions/auth";
-import { updateProfile } from "@/src/actions/profile";
+import {
+  deleteAccount,
+  markAllNotificationsRead,
+  updateNotifications,
+  updateProfile,
+} from "@/src/actions/profile";
 import type { SafeUser } from "@/src/lib/auth";
 import { toast } from "sonner";
 
@@ -161,6 +166,12 @@ type AuditLogItem = {
   createdAt: string;
 };
 
+type UserPreference = {
+  receiveEmailMarketing: boolean;
+  receiveEmailAuction: boolean;
+  receiveEmailNotification: boolean;
+};
+
 type ProfileClientProps = {
   user: SafeUser;
   stats: ProfileStats;
@@ -169,6 +180,7 @@ type ProfileClientProps = {
   watchlistItems: WatchlistItem[];
   notifications: UserNotification[];
   auditLogs: AuditLogItem[];
+  userPreference: UserPreference;
 };
 
 function getInitials(name: string) {
@@ -292,18 +304,25 @@ export function ProfileClient({
   watchlistItems,
   notifications,
   auditLogs,
+  userPreference,
 }: ProfileClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [fullName, setFullName] = useState(user.fullName);
   const [phone, setPhone] = useState(user.phone ?? "");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [bio, setBio] = useState("");
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [bidNotifications, setBidNotifications] = useState(true);
-  const [marketingNotifications, setMarketingNotifications] = useState(false);
+  const [address, setAddress] = useState(user.address ?? "");
+  const [city, setCity] = useState(user.city ?? "");
+  const [bio, setBio] = useState(user.bio ?? "");
+  const [emailNotifications, setEmailNotifications] = useState(
+    userPreference.receiveEmailNotification
+  );
+  const [bidNotifications, setBidNotifications] = useState(
+    userPreference.receiveEmailAuction
+  );
+  const [marketingNotifications, setMarketingNotifications] = useState(
+    userPreference.receiveEmailMarketing
+  );
   const [fieldErrors, setFieldErrors] = useState<{
     fullName?: string[];
     phone?: string[];
@@ -323,7 +342,12 @@ export function ProfileClient({
   );
 
   const completedItems = completionItems.filter((item) => item.done).length;
-  const hasChanges = fullName !== user.fullName || phone !== (user.phone ?? "");
+  const hasChanges =
+    fullName !== user.fullName ||
+    phone !== (user.phone ?? "") ||
+    address !== (user.address ?? "") ||
+    city !== (user.city ?? "") ||
+    bio !== (user.bio ?? "");
 
   async function handleLogout() {
     setIsLoggingOut(true);
@@ -345,6 +369,9 @@ export function ProfileClient({
       const result = await updateProfile({
         fullName,
         phone,
+        address,
+        city,
+        bio,
       });
 
       if (result.success) {
@@ -353,6 +380,9 @@ export function ProfileClient({
         });
         setFullName(result.data.fullName);
         setPhone(result.data.phone ?? "");
+        setAddress(result.data.address ?? "");
+        setCity(result.data.city ?? "");
+        setBio(result.data.bio ?? "");
         router.refresh();
         return;
       }
@@ -365,6 +395,60 @@ export function ProfileClient({
   function handlePlaceholderAction(message: string) {
     toast.info(message, {
       description: "UI đã sẵn sàng, cần bổ sung API/backend ở bước tiếp theo.",
+    });
+  }
+
+  function handleSaveNotificationSettings() {
+    startTransition(async () => {
+      const result = await updateNotifications({
+        receiveEmailNotification: emailNotifications,
+        receiveEmailAuction: bidNotifications,
+        receiveEmailMarketing: marketingNotifications,
+      });
+
+      if (result.success) {
+        toast.success("Đã lưu cài đặt thông báo");
+        router.refresh();
+        return;
+      }
+
+      toast.error(result.error);
+    });
+  }
+
+  function handleMarkAllNotificationsRead() {
+    startTransition(async () => {
+      const result = await markAllNotificationsRead();
+
+      if (result.success) {
+        toast.success("Đã đánh dấu tất cả thông báo là đã đọc");
+        router.refresh();
+        return;
+      }
+
+      toast.error(result.error);
+    });
+  }
+
+  function handleDeleteAccount() {
+    const confirmed = window.confirm(
+      "Bạn chắc chắn muốn xóa tài khoản? Hồ sơ sẽ bị vô hiệu hóa và bạn cần liên hệ quản trị viên để khôi phục."
+    );
+
+    if (!confirmed) return;
+
+    startTransition(async () => {
+      const result = await deleteAccount();
+
+      if (result.success) {
+        await logout();
+        toast.success("Tài khoản đã được vô hiệu hóa");
+        router.push("/");
+        router.refresh();
+        return;
+      }
+
+      toast.error(result.error);
     });
   }
 
@@ -774,8 +858,7 @@ export function ProfileClient({
               <CardHeader>
                 <CardTitle>Thông tin cá nhân</CardTitle>
                 <CardDescription>
-                  Các trường họ tên và số điện thoại đang kết nối server action thật.
-                  Những trường mở rộng được dựng UI placeholder để sẵn sàng tích hợp.
+                  Thông tin cá nhân được lưu trực tiếp xuống bảng profiles.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -828,9 +911,6 @@ export function ProfileClient({
                       value={city}
                       onChange={(event) => setCity(event.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Placeholder - chưa có trường trong schema.
-                    </p>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="address">Địa chỉ</Label>
@@ -840,9 +920,6 @@ export function ProfileClient({
                       value={address}
                       onChange={(event) => setAddress(event.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Placeholder - chưa lưu xuống database.
-                    </p>
                   </div>
                 </div>
                 <div className="grid gap-2">
@@ -868,9 +945,9 @@ export function ProfileClient({
                     onClick={() => {
                       setFullName(user.fullName);
                       setPhone(user.phone ?? "");
-                      setAddress("");
-                      setCity("");
-                      setBio("");
+                      setAddress(user.address ?? "");
+                      setCity(user.city ?? "");
+                      setBio(user.bio ?? "");
                       setFieldErrors({});
                     }}
                     disabled={isPending}
@@ -1186,7 +1263,7 @@ export function ProfileClient({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handlePlaceholderAction("Đánh dấu tất cả đã đọc chưa có API")}
+                    onClick={handleMarkAllNotificationsRead}
                     disabled={notifications.length === 0}
                   >
                     Đánh dấu tất cả là đã đọc
@@ -1249,7 +1326,7 @@ export function ProfileClient({
                 <CardHeader>
                   <CardTitle>Cài đặt thông báo</CardTitle>
                   <CardDescription>
-                    Tùy chọn UI sẵn sàng tích hợp preference backend.
+                    Tùy chọn được lưu trực tiếp xuống bảng user_preferences.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1273,7 +1350,8 @@ export function ProfileClient({
                   />
                   <Button
                     variant="outline"
-                    onClick={() => handlePlaceholderAction("Lưu cài đặt chưa có API")}
+                    onClick={handleSaveNotificationSettings}
+                    disabled={isPending}
                   >
                     Lưu cài đặt
                   </Button>
@@ -1291,12 +1369,12 @@ export function ProfileClient({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-                    Xóa tài khoản sẽ vô hiệu hóa hồ sơ, sản phẩm, watchlist và
-                    lịch sử liên quan. Chức năng này hiện chỉ dựng UI placeholder.
+                    Xóa tài khoản sẽ vô hiệu hóa hồ sơ bằng cơ chế soft delete.
                   </div>
                   <Button
                     variant="destructive"
-                    onClick={() => handlePlaceholderAction("Xóa tài khoản chưa có API")}
+                    onClick={handleDeleteAccount}
+                    disabled={isPending}
                   >
                     Xóa tài khoản
                   </Button>
