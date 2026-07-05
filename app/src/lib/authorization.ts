@@ -16,11 +16,6 @@ export async function requireAuth(): Promise<SafeUser | ErrorResult> {
     return error("UNAUTHENTICATED", "Bạn cần đăng nhập để tiếp tục.");
   }
 
-  // Verify user is not soft-deleted
-  if (user.deletedAt !== null && user.deletedAt !== undefined) {
-    return error("USER_BLOCKED", "Tài khoản của bạn đã bị vô hiệu hóa.");
-  }
-
   return user;
 }
 

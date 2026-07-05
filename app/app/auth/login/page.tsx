@@ -14,7 +14,8 @@ import { toast } from "sonner";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/";
+  const redirectParam = searchParams.get("redirect");
+  const redirectTo = redirectParam?.startsWith("/") && !redirectParam.startsWith("//") ? redirectParam : "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +43,8 @@ function LoginForm() {
       }
 
       toast.success("Đăng nhập thành công!");
-      router.replace(redirectTo);
       router.refresh();
+      router.replace(redirectTo);
     } catch (err) {
       console.error("Login submit error:", err);
       const errorMsg = "Không thể đăng nhập. Vui lòng thử lại.";

@@ -21,7 +21,6 @@ export type SafeUser = {
   gender: string | null;
   birthday: Date | null;
   bio: string | null;
-  deletedAt: Date | null;
 };
 
 export async function getSessionUserId(): Promise<string | null> {
@@ -51,15 +50,16 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
 
     if (!userId) return null;
 
-    const profile = await prisma.profile.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        emailVerified: true,
-        fullName: true,
-        phone: true,
-        role: true,
+    try {
+      const profile = await prisma.profile.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          emailVerified: true,
+          fullName: true,
+          phone: true,
+          role: true,
           avatarUrl: true,
           createdAt: true,
           address: true,
@@ -68,10 +68,66 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
           birthday: true,
           bio: true,
           deletedAt: true,
-      },
-    });
+        },
+      });
 
-    return profile;
+      if (!profile || profile.deletedAt) {
+        return null;
+      }
+
+      return {
+        id: profile.id,
+        email: profile.email,
+        emailVerified: profile.emailVerified,
+        fullName: profile.fullName,
+        phone: profile.phone,
+        role: profile.role,
+        avatarUrl: profile.avatarUrl,
+        createdAt: profile.createdAt,
+        address: profile.address,
+        city: profile.city,
+        gender: profile.gender,
+        birthday: profile.birthday,
+        bio: profile.bio,
+      };
+    } catch (profileError) {
+      console.error("[Auth] extended profile read failed, falling back to core profile:", profileError);
+
+      const profile = await prisma.profile.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          emailVerified: true,
+          fullName: true,
+          phone: true,
+          role: true,
+          avatarUrl: true,
+          createdAt: true,
+          deletedAt: true,
+        },
+      });
+
+      if (!profile || profile.deletedAt) {
+        return null;
+      }
+
+      return {
+        id: profile.id,
+        email: profile.email,
+        emailVerified: profile.emailVerified,
+        fullName: profile.fullName,
+        phone: profile.phone,
+        role: profile.role,
+        avatarUrl: profile.avatarUrl,
+        createdAt: profile.createdAt,
+        address: null,
+        city: null,
+        gender: null,
+        birthday: null,
+        bio: null,
+      };
+    }
   } catch (err) {
     console.error("[Auth] getCurrentUser error:", err);
     return null;
