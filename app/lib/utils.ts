@@ -19,6 +19,14 @@ export function formatCurrency(value: number | string | bigint) {
   }).format(amount);
 }
 
+export function formatNumberWithCommas(value: number | string | bigint) {
+  const amount = typeof value === "bigint" ? Number(value) : Number(value);
+  return new Intl.NumberFormat("vi-VN", {
+    style: "decimal",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export function formatDateTime(value: string | Date | null | undefined) {
   if (!value) {
     return "Chưa xác định";
