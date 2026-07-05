@@ -2,16 +2,18 @@
 
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle, Image as ImageIcon, Clock, Calendar, Lock, Info, ChevronRight, X, ArrowLeft } from "lucide-react";
+import { AlertCircle, CheckCircle, Image as ImageIcon, Clock, Calendar, Lock, Info, ChevronRight, X, ArrowLeft, WifiOff } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { useNetworkStatus } from "@/hooks/use-network-status";
+
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { Textarea } from "../../../components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../../../components/ui/card";
+import { Alert, AlertDescription } from "../../../components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
+import { Badge } from "../../../components/ui/badge";
 import { formatCurrency, formatNumberWithCommas } from "@/lib/utils";
 import { createAuction } from "@/src/actions/auction";
 
@@ -49,8 +51,11 @@ const DURATION_OPTIONS = [
   { value: 10080, label: "7 ngày" },
 ];
 
+const STORAGE_KEY = "auction-form-draft";
+
 export function NewAuctionClient() {
   const router = useRouter();
+  const { isOnline } = useNetworkStatus();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +88,49 @@ export function NewAuctionClient() {
   const parsedBidStep = Number(bidStep) || 0;
   const parsedDuration = Number(duration) || 15;
   const estimatedEnd = new Date(Date.now() + parsedDuration * 60 * 1000);
+
+  // Load draft from localStorage on mount
+  useEffect(() => {
+    const loadDraft = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const draft = JSON.parse(saved);
+          if (draft.title) setTitle(draft.title);
+          if (draft.category) setCategory(draft.category);
+          if (draft.condition) setCondition(draft.condition);
+          if (draft.description) setDescription(draft.description);
+          if (draft.startPrice) setStartPrice(draft.startPrice);
+          if (draft.bidStep) setBidStep(draft.bidStep);
+          if (draft.duration) setDuration(draft.duration);
+          if (draft.imageUrls) setImageUrls(draft.imageUrls);
+        }
+      } catch {
+        // Ignore localStorage errors
+      }
+    };
+    loadDraft();
+  }, []);
+
+  // Save draft to localStorage on form changes
+  useEffect(() => {
+    try {
+      const draft = {
+        title,
+        category,
+        condition,
+        description,
+        startPrice,
+        bidStep,
+        duration,
+        imageUrls,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [title, category, condition, description, startPrice, bidStep, duration, imageUrls]);
 
   // Check authentication on mount
   useEffect(() => {
@@ -273,6 +321,12 @@ export function NewAuctionClient() {
 
   const confirmSubmit = async () => {
     setConfirmOpen(false);
+
+    if (!isOnline) {
+      setError("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -293,6 +347,11 @@ export function NewAuctionClient() {
       });
 
       if (result.success) {
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          // Ignore localStorage errors
+        }
         setSuccessMessage("Tạo phiên đấu giá thành công! Chuyển hướng đến phiên đấu giá...");
         setTimeout(() => {
           router.push(`/auctions/${result.data.auctionId}`);
@@ -372,6 +431,15 @@ export function NewAuctionClient() {
           </Button>
         </div>
       </div>
+
+      {!isOnline && (
+        <Alert className="mb-6 border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <WifiOff className="h-5 w-5" />
+          <AlertDescription>
+            Mất kết nối. Dữ liệu form đang được giữ trên trình duyệt. Khi có mạng trở lại, vui lòng tự bấm submit lại.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Main content - 2 columns on desktop */}
       <div className="grid gap-6 lg:grid-cols-12">
@@ -745,6 +813,10 @@ export function NewAuctionClient() {
                   type="button"
                   onClick={() => {
                     setError(null);
+                    if (!isOnline) {
+                      setError("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
+                      return;
+                    }
                     if (!isFormValid) {
                       setError("Vui lòng kiểm tra lại thông tin form");
                       return;
@@ -755,7 +827,7 @@ export function NewAuctionClient() {
                     }
                     setConfirmOpen(true);
                   }}
-                  disabled={!isFormValid || submitting || !termsAccepted}
+                  disabled={!isFormValid || submitting || !termsAccepted || !isOnline}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {submitting ? "Đang tạo..." : "Tạo phiên đấu giá"}
@@ -940,7 +1012,7 @@ export function NewAuctionClient() {
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
               Kiểm tra lại
             </Button>
-            <Button onClick={confirmSubmit} disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={confirmSubmit} disabled={submitting || !isOnline} className="bg-emerald-600 hover:bg-emerald-700">
               {submitting ? "Đang tạo..." : "Xác nhận tạo"}
             </Button>
           </DialogFooter>

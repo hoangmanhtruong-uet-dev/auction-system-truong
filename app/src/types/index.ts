@@ -1,8 +1,11 @@
 import { z } from "zod";
+import type { AppErrorCode as StandardAppErrorCode, ActionResult as StandardActionResult } from "@/src/lib/error-codes";
 
-export type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string; code?: string };
+// Re-export the standardized AppErrorCode for backward compatibility
+export type AppErrorCode = StandardAppErrorCode;
+
+// Re-export the standardized ActionResult for backward compatibility
+export type ActionResult<T> = StandardActionResult<T>;
 
 // --- AUTH SCHEMAS ---
 

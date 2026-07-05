@@ -61,45 +61,50 @@ export async function listAdminAuctions() {
   }
 }
 
-export async function adminCancelAuction(auctionId: string) {
-  await requireAdmin();
-
+export async function adminCancelAuction(auctionId: string, reason?: string) {
   if (!auctionId || typeof auctionId !== "string") {
     throw new Error("Invalid auction ID");
   }
 
   const user = await requireAdmin();
 
+  if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
+    throw new Error("Vui lòng nhập lý do huỷ phiên (ít nhất 5 ký tự)");
+  }
+
   try {
     const auction = await prisma.auction.findUnique({
       where: { id: auctionId },
+      select: {
+        id: true,
+        status: true,
+        paidAt: true,
+      },
     });
 
     if (!auction) {
       throw new Error("Phiên đấu giá không tồn tại");
     }
 
-    // Prevent cancelling ended or already cancelled auctions
+    // Prevent cancelling already cancelled or completed auctions
     if (auction.status === AuctionStatus.CANCELLED) {
       throw new Error("Phiên đấu giá đã bị huỷ");
     }
 
-    if (auction.status === AuctionStatus.COMPLETED) {
-      throw new Error("Phiên đấu giá đã kết thúc, không thể huỷ");
-    }
-
-    // Check if ended (no endsAt or in the past)
-    const now = new Date();
-    if (!auction.endsAt || auction.endsAt <= now) {
-      throw new Error("Phiên đấu giá đã kết thúc, không thể huỷ");
+    if (auction.status === AuctionStatus.COMPLETED && auction.paidAt) {
+      throw new Error("Phiên đấu giá đã thanh toán, không thể huỷ");
     }
 
     const previousStatus = auction.status;
+    const now = new Date();
 
     const updatedAuction = await prisma.auction.update({
       where: { id: auctionId },
       data: {
         status: AuctionStatus.CANCELLED,
+        canceledAt: now,
+        canceledById: user.id,
+        cancelReason: reason.trim(),
       },
     });
 
@@ -114,6 +119,7 @@ export async function adminCancelAuction(auctionId: string) {
       },
       newValues: {
         status: updatedAuction.status,
+        cancelReason: reason.trim(),
       },
     });
 

@@ -87,7 +87,7 @@ const BID_STATUS_LABELS: Record<BidStatus, string> = {
   CANCELLED: "Đã hủy",
 };
 
-const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   AUCTION_CREATED: "Đấu giá",
   AUCTION_ACTIVATED: "Đấu giá",
   AUCTION_ENDING_SOON: "Đấu giá",
@@ -95,6 +95,8 @@ const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   BID_PLACED: "Bid",
   BID_OUTBID: "Bid",
   BID_WON: "Giao dịch",
+  BID_LOST: "Giao dịch",
+  AUCTION_PAID: "Giao dịch",
   SYSTEM: "Hệ thống",
 };
 

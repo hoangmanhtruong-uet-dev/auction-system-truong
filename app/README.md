@@ -180,6 +180,36 @@ Route alias trong `proxy.ts`:
 - Chưa có monitoring, alerting, tracing, backup/restore playbook.
 - Chưa có test suite tự động đầy đủ cho các luồng nghiệp vụ.
 
+## Checklist bảo mật và error handling cần kiểm tra
+
+- Network offline mode disable form/submit đúng chưa?
+- Reconnect có refetch AuctionDetail, update price warnings không?
+- Session hết hạn có logout và redirect đúng không?
+- Error message có thân thiện và không expose internals không?
+- Idempotency/submit prevention hoạt động đúng chưa?
+- ErrorBoundary có bắt được all errors không?
+
+## Tính năng bảo mật và error handling đã bổ sung (v0.2)
+
+- Network status detection (online/offline) với `useNetworkStatus` hook.
+- Global NetworkStatusBanner hiển thị khi mất kết nối.
+- Auction detail refetch khi reconnect, warning khi giá thay đổi.
+- Create auction form giữ dữ liệu khi offline, disable submit.
+- Request timeout và retry logic (GET only).
+- Auth session error handling (401, SESSION_EXPIRED, SESSION_REVOKED).
+- Stale data warnings và auto-refetch khi quay lại tab.
+- ErrorBoundary bao quanh toàn app.
+- Multi-tab behavior: bid/update qua polling/realtime fallback.
+
+## Multi-session policy
+
+Hệ thống hiện cho phép đăng nhập trên nhiều thiết bị cùng lúc. Điều này giúp UX thuận tiện nhưng có thể làm giảm an toàn nếu thiết bị bị leak token.
+
+Nếu cần single-session:
+- server cần lưu `sessionVersion` hoặc `activeSessionId` trong DB.
+- mỗi login mới tạo session version mới và invalidate version cũ.
+- các thiết bị cũ nhận `SESSION_REVOKED` sẽ logout và yêu cầu đăng nhập lại.
+
 ## Checklist QA thủ công khuyến nghị
 
 Routes cần kiểm tra:

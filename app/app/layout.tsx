@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthWrapper } from "@/components/auth-wrapper";
+import { LayoutClient } from "@/components/layout-client";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,7 +41,7 @@ export default function RootLayout({
                   <AuthWrapper />
                 </div>
               </header>
-              {children}
+              <LayoutClient>{children}</LayoutClient>
             </main>
           </SidebarProvider>
           <Toaster />

@@ -11,7 +11,7 @@ import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { AdminAuction } from "@/src/actions/admin-auctions";
 
 const STATUS_LABEL: Record<AuctionStatus, string> = {
-  PENDING: "Chờ mở",
+  PENDING: "Sắp diễn ra",
   ACTIVE: "Đang diễn ra",
   COMPLETED: "Đã kết thúc",
   CANCELLED: "Đã huỷ",
@@ -25,15 +25,7 @@ const STATUS_COLOR: Record<AuctionStatus, string> = {
 };
 
 function canCancelAuction(auction: AdminAuction): boolean {
-  if (auction.status === AuctionStatus.CANCELLED || auction.status === AuctionStatus.COMPLETED) {
-    return false;
-  }
-
-  if (!auction.endsAt) {
-    return false;
-  }
-
-  return new Date(auction.endsAt).getTime() > Date.now();
+  return [AuctionStatus.PENDING, AuctionStatus.ACTIVE, AuctionStatus.COMPLETED, AuctionStatus.CANCELLED].includes(auction.status);
 }
 
 export function AdminAuctionsClient({ initialAuctions }: { initialAuctions: AdminAuction[] }) {
@@ -48,8 +40,8 @@ export function AdminAuctionsClient({ initialAuctions }: { initialAuctions: Admi
       return;
     }
 
-    const confirmed = window.confirm(`Huỷ phiên đấu giá "${auction.title}"?`);
-    if (!confirmed) {
+    const reason = window.prompt(`Nhập lý do huỷ phiên đấu giá "${auction.title}"`);
+    if (!reason) {
       return;
     }
 
@@ -59,7 +51,7 @@ export function AdminAuctionsClient({ initialAuctions }: { initialAuctions: Admi
     startTransition(async () => {
       try {
         const { adminCancelAuction } = await import("@/src/actions/admin-auctions");
-        const result = await adminCancelAuction(auction.id);
+        const result = await adminCancelAuction(auction.id, reason);
 
         if (result.success) {
           setAuctions((prev) =>

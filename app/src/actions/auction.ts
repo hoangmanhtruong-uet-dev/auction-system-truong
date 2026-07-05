@@ -6,20 +6,45 @@ import type { Prisma } from "@prisma/client";
 
 import { formatCurrency } from "@/lib/utils";
 import { getCurrentUser } from "@/src/lib/auth";
+import { getBidStatusError } from "@/src/lib/auction-lifecycle";
+import { assertNotSellerBidder } from "@/src/lib/authorization";
+import { error, success, type AppErrorCode } from "@/src/lib/error-codes";
+import { logError, normalizeError } from "@/src/lib/error-handling";
 import { prisma } from "@/src/lib/prisma";
 import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
 import { ActionResult, CreateAuctionInput, CreateAuctionSchema, PlaceBidInput, PlaceBidSchema } from "@/src/types";
 
 const NETWORK_ERROR_MESSAGE = "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";
 const LOGIN_REQUIRED_MESSAGE = "Bạn cần đăng nhập để thực hiện thao tác này.";
-const BID_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const BID_RATE_LIMIT = 30;
+const BID_RATE_LIMIT_WINDOW_MS = 2 * 1000;
+const BID_RATE_LIMIT = 1;
+const MAX_SAFE_BID_PRICE = 9_000_000_000_000_000;
 const AUTO_EXTENSION_THRESHOLD_MS = 2 * 60 * 1000;
 const AUTO_EXTENSION_DURATION_MS = 2 * 60 * 1000;
 
 function getValidationMessage(error: { flatten: () => { fieldErrors: Record<string, string[]>; formErrors: string[] } }) {
   const flattened = error.flatten();
   return flattened.formErrors[0] ?? Object.values(flattened.fieldErrors).flat()[0] ?? "Dữ liệu không hợp lệ.";
+}
+
+function getValidationFieldErrors(error: { flatten: () => { fieldErrors: Record<string, string[]>; formErrors: string[] } }) {
+  const flattened = error.flatten();
+  return Object.fromEntries(
+    Object.entries(flattened.fieldErrors)
+      .filter(([, messages]) => messages?.length)
+      .map(([field, messages]) => [field, messages[0] ?? "Giá trị không hợp lệ"]),
+  );
+}
+
+class BidFlowError extends Error {
+  constructor(
+    public readonly code: AppErrorCode,
+    message: string,
+    public readonly metadata?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "BidFlowError";
+  }
 }
 
 export type SerializedAuctionListItem = {
@@ -119,12 +144,14 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
 }>> {
   const parsed = CreateAuctionSchema.safeParse(data);
   if (!parsed.success) {
-    return { success: false, error: getValidationMessage(parsed.error), code: "VALIDATION_ERROR" };
+    return error("VALIDATION_ERROR", getValidationMessage(parsed.error), {
+      fieldErrors: getValidationFieldErrors(parsed.error),
+    });
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return { success: false, error: LOGIN_REQUIRED_MESSAGE, code: "AUTH_REQUIRED" };
+    return error("UNAUTHENTICATED", LOGIN_REQUIRED_MESSAGE);
   }
 
   try {
@@ -146,7 +173,7 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
           autoExtensionEnabled: parsed.data.autoExtensionEnabled,
           maxExtensions: parsed.data.maxExtensions,
           currentExtensionCount: 0,
-          status: AuctionStatus.ACTIVE,
+          status: AuctionStatus.PENDING,
           sellerId: user.id,
           startsAt,
           endsAt,
@@ -201,9 +228,8 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
         status: auction.status,
       },
     };
-  } catch (error) {
-    console.error("Create auction error:", error);
-    return { success: false, error: NETWORK_ERROR_MESSAGE, code: "CREATE_AUCTION_FAILED" };
+  } catch (err) {
+    return normalizeError(err, "createAuction", "CREATE_AUCTION_FAILED", NETWORK_ERROR_MESSAGE);
   }
 }
 
@@ -216,27 +242,41 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
 }>> {
   const parsed = PlaceBidSchema.safeParse(data);
   if (!parsed.success) {
-    return { success: false, error: getValidationMessage(parsed.error), code: "VALIDATION_ERROR" };
+    return error("VALIDATION_ERROR", getValidationMessage(parsed.error), {
+      fieldErrors: getValidationFieldErrors(parsed.error),
+    });
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return { success: false, error: LOGIN_REQUIRED_MESSAGE, code: "AUTH_REQUIRED" };
+    return error("UNAUTHENTICATED", LOGIN_REQUIRED_MESSAGE);
   }
 
   if (!Number.isSafeInteger(parsed.data.bidPrice) || parsed.data.bidPrice <= 0) {
-    return { success: false, error: "Giá đặt không hợp lệ" };
+    return error("VALIDATION_ERROR", "Giá đặt không hợp lệ.", {
+      fieldErrors: { bidPrice: "Giá đặt phải là số nguyên dương." },
+    });
+  }
+
+  if (parsed.data.bidPrice > MAX_SAFE_BID_PRICE) {
+    return error("VALIDATION_ERROR", "Giá đặt vượt quá giới hạn an toàn.", {
+      fieldErrors: { bidPrice: "Giá đặt quá lớn." },
+    });
   }
 
   if (
     parsed.data.autoBidMaxPrice !== undefined &&
     (!Number.isSafeInteger(parsed.data.autoBidMaxPrice) || parsed.data.autoBidMaxPrice <= 0)
   ) {
-    return { success: false, error: "Giá tự động tối đa không hợp lệ" };
+    return error("VALIDATION_ERROR", "Giá tự động tối đa không hợp lệ.", {
+      fieldErrors: { autoBidMaxPrice: "Giá tự động tối đa phải là số nguyên dương." },
+    });
   }
 
   if (parsed.data.autoBidMaxPrice !== undefined && parsed.data.bidPrice > parsed.data.autoBidMaxPrice) {
-    return { success: false, error: "Giá đặt không thể lớn hơn giá tự động tối đa.", code: "AUTO_BID_PRICE_EXCEEDS_MAX" };
+    return error("AUTO_BID_PRICE_EXCEEDS_MAX", "Giá đặt không thể lớn hơn giá tự động tối đa.", {
+      fieldErrors: { autoBidMaxPrice: "Giá tự động tối đa phải lớn hơn hoặc bằng giá đặt." },
+    });
   }
 
   try {
@@ -246,11 +286,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
     });
 
     if (!rateLimit.allowed) {
-      return {
-        success: false,
-        error: getRateLimitErrorMessage(rateLimit),
-        code: "RATE_LIMITED",
-      };
+      return error("RATE_LIMITED", getRateLimitErrorMessage(rateLimit));
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -263,7 +299,10 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       `;
 
       if (lockedAuctions.length === 0) {
-        throw new Error("AUCTION_NOT_FOUND");
+        throw new BidFlowError("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.", {
+          userId: user.id,
+          auctionId: parsed.data.auctionId,
+        });
       }
 
       const auction = await tx.auction.findFirst({
@@ -278,6 +317,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           currentPrice: true,
           startPrice: true,
           bidStep: true,
+          startsAt: true,
           endsAt: true,
           winnerId: true,
           autoExtensionEnabled: true,
@@ -287,27 +327,53 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       });
 
       if (!auction) {
-        throw new Error("AUCTION_NOT_FOUND");
+        throw new BidFlowError("AUCTION_NOT_FOUND", "Phiên đấu giá không tồn tại.", {
+          userId: user.id,
+          auctionId: parsed.data.auctionId,
+        });
       }
 
-      if (auction.sellerId === user.id) {
-        throw new Error("SELLER_CANNOT_BID");
+      const sellerCheck = assertNotSellerBidder(auction, user.id);
+      if (sellerCheck !== true) {
+        throw new BidFlowError(sellerCheck.code, sellerCheck.message, {
+          userId: user.id,
+          auctionId: auction.id,
+        });
       }
 
       const now = new Date();
-      if (auction.status !== AuctionStatus.ACTIVE || !auction.endsAt || auction.endsAt <= now) {
-        throw new Error("AUCTION_NOT_ACTIVE");
+      const statusError = await getBidStatusError(auction.id, auction.status, auction.startsAt, auction.endsAt, tx);
+      if (statusError) {
+        throw new BidFlowError(statusError.code, statusError.message, {
+          userId: user.id,
+          auctionId: auction.id,
+          status: auction.status,
+        });
       }
 
       if (parsed.data.expectedCurrentPrice && auction.currentPrice.toString() !== parsed.data.expectedCurrentPrice) {
-        throw new Error("CURRENT_PRICE_CHANGED");
+        const minimumBid = auction.currentPrice + auction.bidStep;
+        throw new BidFlowError(
+          "PRICE_CHANGED",
+          `Giá đã thay đổi. Giá tối thiểu hiện tại là ${formatCurrency(minimumBid)}.`,
+          {
+            userId: user.id,
+            auctionId: auction.id,
+            currentPrice: auction.currentPrice.toString(),
+            minimumBid: minimumBid.toString(),
+          },
+        );
       }
 
       const bidAmount = BigInt(parsed.data.bidPrice);
       const minimumBid = auction.currentPrice + auction.bidStep;
 
       if (bidAmount < minimumBid) {
-        throw new Error(`BID_TOO_LOW:${minimumBid.toString()}`);
+        throw new BidFlowError("BID_TOO_LOW", `Giá đặt phải lớn hơn hoặc bằng ${formatCurrency(minimumBid)}.`, {
+          userId: user.id,
+          auctionId: auction.id,
+          minimumBid: minimumBid.toString(),
+        });
       }
 
       await tx.bid.updateMany({
@@ -340,9 +406,10 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       const shouldAutoExtend =
         auction.autoExtensionEnabled &&
         auction.currentExtensionCount < auction.maxExtensions &&
+        auction.endsAt !== null &&
         auction.endsAt.getTime() - now.getTime() <= AUTO_EXTENSION_THRESHOLD_MS;
 
-      const nextEndsAt = shouldAutoExtend
+      const nextEndsAt = shouldAutoExtend && auction.endsAt
         ? new Date(auction.endsAt.getTime() + AUTO_EXTENSION_DURATION_MS)
         : auction.endsAt;
 
@@ -381,7 +448,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
             auctionCurrentPrice: bidAmount.toString(),
             auctionWinnerId: user.id,
             autoExtended: shouldAutoExtend,
-            endsAt: nextEndsAt.toISOString(),
+            endsAt: nextEndsAt?.toISOString() ?? null,
           },
         },
       });
@@ -406,32 +473,18 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         autoBidsPlaced: result.autoBidsPlaced,
       },
     };
-  } catch (error) {
-    console.error("Place bid error:", error);
+  } catch (err) {
+    if (err instanceof BidFlowError) {
+      logError("placeBid.rejected", err, {
+        code: err.code,
+        ...err.metadata,
+      });
+      return error(err.code, err.message, {
+        details: process.env.NODE_ENV === "production" ? undefined : err.metadata,
+      });
+    }
 
-    const message =
-      error instanceof Error && error.message === "AUCTION_NOT_FOUND"
-        ? "Phiên đấu giá không tồn tại."
-        : error instanceof Error && error.message === "SELLER_CANNOT_BID"
-          ? "Người bán không thể đặt giá cho phiên của mình."
-          : error instanceof Error && error.message === "AUCTION_NOT_ACTIVE"
-            ? "Phiên đấu giá chưa hoạt động hoặc đã kết thúc."
-            : error instanceof Error && error.message === "CURRENT_PRICE_CHANGED"
-              ? "Giá hiện tại đã thay đổi. Vui lòng tải lại và thử lại."
-              : error instanceof Error && error.message.startsWith("BID_TOO_LOW:")
-                ? `Giá đặt phải lớn hơn hoặc bằng ${formatCurrency(error.message.split(":")[1])}.`
-                : NETWORK_ERROR_MESSAGE;
-
-    const code =
-      error instanceof Error && error.message === "CURRENT_PRICE_CHANGED"
-        ? "CURRENT_PRICE_CHANGED"
-        : error instanceof Error && error.message.startsWith("BID_TOO_LOW:")
-          ? "BID_TOO_LOW"
-          : error instanceof Error
-            ? error.message
-            : "PLACE_BID_FAILED";
-
-    return { success: false, error: message, code };
+    return normalizeError(err, "placeBid", "PLACE_BID_FAILED", NETWORK_ERROR_MESSAGE);
   }
 }
 
