@@ -56,7 +56,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDateTime, formatRemainingTime } from "@/lib/utils";
 import { logout } from "@/src/actions/auth";
 import {
-  changePassword,
   deleteAccount,
   logoutAllDevices,
   markAllNotificationsRead,
@@ -64,6 +63,7 @@ import {
   updateNotifications,
   updateProfile,
 } from "@/src/actions/profile";
+import { sendEmailVerification } from "@/src/actions/profile-email-verification";
 import type { SafeUser } from "@/src/lib/auth";
 import { toast } from "sonner";
 
@@ -433,6 +433,22 @@ export function ProfileClient({
     });
   }
 
+  function handleSendEmailVerification() {
+    startTransition(async () => {
+      const result = await sendEmailVerification();
+
+      if (result.success) {
+        toast.success("Đã gửi email xác minh", {
+          description: result.data.message,
+        });
+        router.refresh();
+        return;
+      }
+
+      toast.error(result.error);
+    });
+  }
+
   function handleDeleteAccount() {
     const confirmed = window.confirm(
       "Bạn chắc chắn muốn xóa tài khoản? Hồ sơ sẽ bị vô hiệu hóa và bạn cần liên hệ quản trị viên để khôi phục."
@@ -617,32 +633,11 @@ export function ProfileClient({
                   <User className="mr-2 h-4 w-4" />
                   Chỉnh sửa hồ sơ
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const currentPassword = window.prompt("Nhập mật khẩu hiện tại:");
-                    if (!currentPassword) return;
-                    const newPassword = window.prompt("Nhập mật khẩu mới:");
-                    if (!newPassword || newPassword.length < 8) {
-                      toast.error("Mật khẩu mới phải có ít nhất 8 ký tự");
-                      return;
-                    }
-                    startTransition(async () => {
-                      const result = await changePassword({
-                        currentPassword,
-                        newPassword,
-                      });
-                      if (result.success) {
-                        toast.success("Đã đổi mật khẩu thành công");
-                        router.refresh();
-                      } else {
-                        toast.error(result.error);
-                      }
-                    });
-                  }}
-                >
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Đổi mật khẩu
+                <Button variant="outline" asChild>
+                  <Link href="/change-password">
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Đổi mật khẩu
+                  </Link>
                 </Button>
                 <Button
                   variant="destructive"
@@ -1047,6 +1042,23 @@ export function ProfileClient({
                     description={user.email}
                     status={user.emailVerified ? "Đã xác minh" : "Chưa xác minh"}
                     verified={user.emailVerified}
+                    action={
+                      !user.emailVerified ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSendEmailVerification}
+                          disabled={isPending}
+                        >
+                          {isPending ? (
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Mail className="mr-2 h-4 w-4" />
+                          )}
+                          Gửi email xác minh
+                        </Button>
+                      ) : null
+                    }
                   />
                   <SecurityRow
                     icon={WalletCards}
@@ -1063,31 +1075,11 @@ export function ProfileClient({
                     verified
                   />
                   <div className="flex flex-col gap-2 pt-2 sm:flex-row">
-                    <Button
-                      onClick={() => {
-                        const currentPassword = window.prompt("Nhập mật khẩu hiện tại:");
-                        if (!currentPassword) return;
-                        const newPassword = window.prompt("Nhập mật khẩu mới:");
-                        if (!newPassword || newPassword.length < 8) {
-                          toast.error("Mật khẩu mới phải có ít nhất 8 ký tự");
-                          return;
-                        }
-                        startTransition(async () => {
-                          const result = await changePassword({
-                            currentPassword,
-                            newPassword,
-                          });
-                          if (result.success) {
-                            toast.success("Đã đổi mật khẩu thành công");
-                            router.refresh();
-                          } else {
-                            toast.error(result.error);
-                          }
-                        });
-                      }}
-                    >
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      Đổi mật khẩu
+                    <Button asChild>
+                      <Link href="/change-password">
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        Đổi mật khẩu
+                      </Link>
                     </Button>
                     <Button
                       variant="outline"
@@ -1556,12 +1548,14 @@ function SecurityRow({
   description,
   status,
   verified,
+  action,
 }: {
   icon: React.ElementType;
   title: string;
   description: string;
   status: string;
   verified: boolean;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl border p-4">
@@ -1574,15 +1568,18 @@ function SecurityRow({
           <p className="truncate text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
-      <Badge
-        className={
-          verified
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-            : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-        }
-      >
-        {status}
-      </Badge>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <Badge
+          className={
+            verified
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+          }
+        >
+          {status}
+        </Badge>
+        {action}
+      </div>
     </div>
   );
 }

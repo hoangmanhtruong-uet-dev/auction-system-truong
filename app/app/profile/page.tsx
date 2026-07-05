@@ -26,7 +26,7 @@ export default async function ProfilePage() {
     notifications,
     auditLogs,
     userPreference,
-  ] = await Promise.all([
+  ] = await prisma.$transaction([
     prisma.auction.count({
       where: {
         sellerId: user.id,
