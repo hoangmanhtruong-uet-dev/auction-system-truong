@@ -103,6 +103,8 @@ model Auction {
   startPrice            BigInt        @map("start_price")
   currentPrice          BigInt        @default(0) @map("current_price")
   bidStep               BigInt        @default(10000) @map("bid_step")
+  category              String?       @db.VarChar(100)
+  condition             String?       @db.VarChar(100)
   durationMinutes       Int           @default(15) @map("duration_minutes")
   autoExtensionEnabled  Boolean       @default(true) @map("auto_extension_enabled")
   maxExtensions         Int           @default(3) @map("max_extensions")

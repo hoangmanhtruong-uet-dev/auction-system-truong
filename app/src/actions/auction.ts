@@ -136,6 +136,8 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
       const createdAuction = await tx.auction.create({
         data: {
           title: parsed.data.title,
+          category: parsed.data.category,
+          condition: parsed.data.condition,
           description: parsed.data.description,
           startPrice,
           currentPrice: startPrice,
