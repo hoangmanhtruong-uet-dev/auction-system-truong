@@ -5,6 +5,21 @@ import { getCurrentUser } from "@/src/lib/auth";
 
 import { ProfileClient } from "./profile-client";
 
+const DEFAULT_USER_PREFERENCE = {
+  receiveEmailMarketing: true,
+  receiveEmailAuction: true,
+  receiveEmailNotification: true,
+};
+
+async function safeProfileQuery<T>(label: string, query: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await query;
+  } catch (error) {
+    console.error(`[ProfilePage] ${label} failed:`, error);
+    return fallback;
+  }
+}
+
 export default async function ProfilePage() {
   const user = await getCurrentUser();
 
@@ -26,182 +41,232 @@ export default async function ProfilePage() {
     notifications,
     auditLogs,
     userPreference,
-  ] = await prisma.$transaction([
-    prisma.auction.count({
-      where: {
-        sellerId: user.id,
-        deletedAt: null,
-      },
-    }),
-    prisma.auction.count({
-      where: {
-        sellerId: user.id,
-        status: "ACTIVE",
-        deletedAt: null,
-      },
-    }),
-    prisma.bid.count({
-      where: {
-        bidderId: user.id,
-        deletedAt: null,
-      },
-    }),
-    prisma.auction.count({
-      where: {
-        winnerId: user.id,
-        status: "ACTIVE",
-        deletedAt: null,
-      },
-    }),
-    prisma.auction.count({
-      where: {
-        winnerId: user.id,
-        status: "COMPLETED",
-        deletedAt: null,
-      },
-    }),
-    prisma.watchlist.count({
-      where: {
-        profileId: user.id,
-      },
-    }),
-    prisma.notification.count({
-      where: {
-        profileId: user.id,
-        readAt: null,
-      },
-    }),
-    prisma.bid.findMany({
-      where: {
-        bidderId: user.id,
-        deletedAt: null,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 8,
-      include: {
-        auction: {
-          select: {
-            id: true,
-            title: true,
-            currentPrice: true,
-            status: true,
-            endsAt: true,
-            images: {
-              orderBy: {
-                sortOrder: "asc",
-              },
-              take: 1,
-              select: {
-                url: true,
-                altText: true,
-              },
-            },
-          },
+  ] = await Promise.all([
+    safeProfileQuery(
+      "auctionsCreated",
+      prisma.auction.count({
+        where: {
+          sellerId: user.id,
+          deletedAt: null,
         },
-      },
-    }),
-    prisma.auction.findMany({
-      where: {
-        sellerId: user.id,
-        deletedAt: null,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 8,
-      include: {
-        images: {
-          orderBy: {
-            sortOrder: "asc",
-          },
-          take: 1,
-          select: {
-            url: true,
-            altText: true,
-          },
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "activeSelling",
+      prisma.auction.count({
+        where: {
+          sellerId: user.id,
+          status: "ACTIVE",
+          deletedAt: null,
         },
-        _count: {
-          select: {
-            bids: true,
-            watchlistItems: true,
-          },
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "bidsPlaced",
+      prisma.bid.count({
+        where: {
+          bidderId: user.id,
+          deletedAt: null,
         },
-      },
-    }),
-    prisma.watchlist.findMany({
-      where: {
-        profileId: user.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 8,
-      include: {
-        auction: {
-          include: {
-            images: {
-              orderBy: {
-                sortOrder: "asc",
-              },
-              take: 1,
-              select: {
-                url: true,
-                altText: true,
-              },
-            },
-            _count: {
-              select: {
-                bids: true,
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "auctionsWinning",
+      prisma.auction.count({
+        where: {
+          winnerId: user.id,
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "auctionsWon",
+      prisma.auction.count({
+        where: {
+          winnerId: user.id,
+          status: "COMPLETED",
+          deletedAt: null,
+        },
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "watchlistCount",
+      prisma.watchlist.count({
+        where: {
+          profileId: user.id,
+        },
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "unreadNotifications",
+      prisma.notification.count({
+        where: {
+          profileId: user.id,
+          readAt: null,
+        },
+      }),
+      0,
+    ),
+    safeProfileQuery(
+      "recentBids",
+      prisma.bid.findMany({
+        where: {
+          bidderId: user.id,
+          deletedAt: null,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 8,
+        include: {
+          auction: {
+            select: {
+              id: true,
+              title: true,
+              currentPrice: true,
+              status: true,
+              endsAt: true,
+              images: {
+                orderBy: {
+                  sortOrder: "asc",
+                },
+                take: 1,
+                select: {
+                  url: true,
+                  altText: true,
+                },
               },
             },
           },
         },
-      },
-    }),
-    prisma.notification.findMany({
-      where: {
-        profileId: user.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 12,
-      include: {
-        auction: {
-          select: {
-            id: true,
-            title: true,
+      }),
+      [],
+    ),
+    safeProfileQuery(
+      "myAuctions",
+      prisma.auction.findMany({
+        where: {
+          sellerId: user.id,
+          deletedAt: null,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 8,
+        include: {
+          images: {
+            orderBy: {
+              sortOrder: "asc",
+            },
+            take: 1,
+            select: {
+              url: true,
+              altText: true,
+            },
+          },
+          _count: {
+            select: {
+              bids: true,
+              watchlistItems: true,
+            },
           },
         },
-      },
-    }),
-    prisma.auditLog.findMany({
-      where: {
-        profileId: user.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 6,
-      select: {
-        id: true,
-        action: true,
-        resourceType: true,
-        createdAt: true,
-      },
-    }),
-    prisma.userPreference.upsert({
-      where: { profileId: user.id },
-      update: {},
-      create: { profileId: user.id },
-      select: {
-        receiveEmailMarketing: true,
-        receiveEmailAuction: true,
-        receiveEmailNotification: true,
-      },
-    }),
+      }),
+      [],
+    ),
+    safeProfileQuery(
+      "watchlistItems",
+      prisma.watchlist.findMany({
+        where: {
+          profileId: user.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 8,
+        include: {
+          auction: {
+            include: {
+              images: {
+                orderBy: {
+                  sortOrder: "asc",
+                },
+                take: 1,
+                select: {
+                  url: true,
+                  altText: true,
+                },
+              },
+              _count: {
+                select: {
+                  bids: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      [],
+    ),
+    safeProfileQuery(
+      "notifications",
+      prisma.notification.findMany({
+        where: {
+          profileId: user.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 12,
+        include: {
+          auction: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      }),
+      [],
+    ),
+    safeProfileQuery(
+      "auditLogs",
+      prisma.auditLog.findMany({
+        where: {
+          profileId: user.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 6,
+        select: {
+          id: true,
+          action: true,
+          resourceType: true,
+          createdAt: true,
+        },
+      }),
+      [],
+    ),
+    safeProfileQuery(
+      "userPreference",
+      prisma.userPreference.findUnique({
+        where: { profileId: user.id },
+        select: {
+          receiveEmailMarketing: true,
+          receiveEmailAuction: true,
+          receiveEmailNotification: true,
+        },
+      }),
+      null,
+    ),
   ]);
 
   const totalBidValue = recentBids.reduce(
@@ -286,7 +351,7 @@ export default async function ProfilePage() {
         resourceType: log.resourceType,
         createdAt: log.createdAt.toISOString(),
       }))}
-      userPreference={userPreference}
+      userPreference={userPreference ?? DEFAULT_USER_PREFERENCE}
     />
   );
 }
