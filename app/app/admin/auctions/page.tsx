@@ -1,27 +1,19 @@
-import { listAdminAuctions } from "@/src/actions/admin-auctions";
+import { listAdminAuctions, type AdminAuction } from "@/src/actions/admin-auctions";
+import { AdminAuctionsClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
-type AdminAuctionsClientProps = {
-  initialAuctions: Array<{ id: string | number; name?: string }> | null;
-};
+export default async function AdminAuctionsPage() {
+  let auctions: AdminAuction[] | null = null;
+  let error: string | undefined;
 
-function AdminAuctionsClient({ initialAuctions }: AdminAuctionsClientProps) {
-  if (!initialAuctions || initialAuctions.length === 0) {
-    return <div>No auctions found.</div>;
+  try {
+    const result = await listAdminAuctions();
+    auctions = result.data;
+  } catch (e) {
+    console.error("Admin auctions page error:", e);
+    error = "Không thể tải danh sách đấu giá";
   }
 
-  return (
-    <div>
-      {initialAuctions.map((auction) => (
-        <div key={auction.id}>{auction.name ?? "Auction"}</div>
-      ))}
-    </div>
-  );
-}
-
-export default async function AdminAuctionsPage() {
-  const { data: auctions } = await listAdminAuctions();
-
-  return <AdminAuctionsClient initialAuctions={auctions} />;
+  return <AdminAuctionsClient initialAuctions={auctions} error={error} />;
 }

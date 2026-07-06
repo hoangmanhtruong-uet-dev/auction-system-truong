@@ -134,6 +134,7 @@ model Auction {
   notifications  Notification[]
 
   @@index([status, endsAt], map: "idx_auctions_status_ends_at")
+  @@index([status, startsAt, endsAt], map: "idx_auctions_status_starts_at_ends_at")
   @@index([sellerId, status], map: "idx_auctions_seller_id_status")
   @@index([winnerId], map: "idx_auctions_winner_id")
   @@map("auctions")
@@ -169,6 +170,7 @@ model Bid {
   bidder  Profile @relation(fields: [bidderId], references: [id], onDelete: Restrict)
 
   @@index([auctionId, amount], map: "idx_bids_auction_id_amount")
+  @@index([auctionId, status, amount], map: "idx_bids_auction_id_status_amount")
   @@index([bidderId, createdAt], map: "idx_bids_bidder_id_created_at")
   @@index([status], map: "idx_bids_status")
   @@map("bids")
