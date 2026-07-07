@@ -213,7 +213,8 @@ export async function login(data: LoginInput) {
       };
     }
 
-    const sessionUser =
+    // Update session version for non-admin users
+    const updatedProfile =
       profile.role === UserRole.ADMIN
         ? profile
         : await prisma.profile.update({
@@ -227,14 +228,14 @@ export async function login(data: LoginInput) {
             },
           });
 
-    const token = await setAuthCookie(sessionUser);
+    const token = await setAuthCookie(updatedProfile);
 
     return {
       success: true,
       data: {
-        userId: sessionUser.id,
-        email: sessionUser.email,
-        role: sessionUser.role,
+        userId: updatedProfile.id,
+        email: updatedProfile.email,
+        role: updatedProfile.role,
         token,
       },
     };
