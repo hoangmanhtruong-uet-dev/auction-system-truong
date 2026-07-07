@@ -44,7 +44,7 @@ function LoginForm() {
 
       toast.success("Đăng nhập thành công!");
       router.refresh();
-      router.replace(result.data.role === "ADMIN" ? "/admin" : redirectTo);
+      router.replace(result.data!.role === "ADMIN" ? "/admin" : redirectTo);
     } catch (err) {
       console.error("Login submit error:", err);
       const errorMsg = "Không thể đăng nhập. Vui lòng thử lại.";
