@@ -42,6 +42,12 @@ export async function getAdminUsers(input?: { take?: number; cursor?: string }) 
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
+        _count: {
+          select: {
+            auctionsAsSeller: true,
+            bids: true,
+          },
+        },
       },
     });
 

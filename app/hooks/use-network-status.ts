@@ -9,12 +9,12 @@ export function useNetworkStatus(): {
   status: "online" | "offline";
   wasEverOffline: boolean;
 } {
-  const [status, setStatus] = React.useState<"online" | "offline">(() =>
-    typeof window !== "undefined" && navigator.onLine ? "online" : "offline"
-  );
+  const [status, setStatus] = React.useState<"online" | "offline">("online");
   const [wasEverOffline, setWasEverOffline] = React.useState(false);
 
   React.useEffect(() => {
+    setStatus(navigator.onLine ? "online" : "offline");
+
     function handleOnline() {
       setStatus("online");
     }
