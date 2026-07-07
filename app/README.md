@@ -1,8 +1,8 @@
-# AutoBid.vn - MVP demo web đấu giá online
+# AutoBid.vn - MVP demo web Ä‘áº¥u giĂ¡ online
 
-AutoBid.vn là MVP demo cho một nền tảng đấu giá online. Project tập trung vào các luồng cốt lõi: đăng ký/đăng nhập, xem danh sách phiên đấu giá từ database, xem chi tiết phiên đấu giá, tạo phiên đấu giá, đặt giá thủ công bằng transaction, profile cơ bản và admin MVP.
+AutoBid.vn lĂ  MVP demo cho má»™t ná»n táº£ng Ä‘áº¥u giĂ¡ online. Project táº­p trung vĂ o cĂ¡c luá»“ng cá»‘t lĂµi: Ä‘Äƒng kĂ½/Ä‘Äƒng nháº­p, xem danh sĂ¡ch phiĂªn Ä‘áº¥u giĂ¡ tá»« database, xem chi tiáº¿t phiĂªn Ä‘áº¥u giĂ¡, táº¡o phiĂªn Ä‘áº¥u giĂ¡, Ä‘áº·t giĂ¡ thá»§ cĂ´ng báº±ng transaction, profile cÆ¡ báº£n vĂ  admin MVP.
 
-> Đây là MVP demo, chưa nên dùng cho giao dịch tiền thật. Trước khi production thật cần bổ sung rate limit, monitoring, security review, anti-abuse, kiểm thử tải, quy trình vận hành và payment compliance nếu có thanh toán.
+> ÄĂ¢y lĂ  MVP demo, chÆ°a nĂªn dĂ¹ng cho giao dá»‹ch tiá»n tháº­t. TrÆ°á»›c khi production tháº­t cáº§n bá»• sung rate limit, monitoring, security review, anti-abuse, kiá»ƒm thá»­ táº£i, quy trĂ¬nh váº­n hĂ nh vĂ  payment compliance náº¿u cĂ³ thanh toĂ¡n.
 
 ## Tech stack
 
@@ -11,55 +11,55 @@ AutoBid.vn là MVP demo cho một nền tảng đấu giá online. Project tập
 - TypeScript
 - Tailwind CSS / shadcn UI
 - Prisma ORM
-- Aiven PostgreSQL Database
+- MySQL Database
 - Custom JWT-based Authentication
 - ESLint
 
-## Yêu cầu môi trường
+## YĂªu cáº§u mĂ´i trÆ°á»ng
 
-- Node.js phiên bản phù hợp với Next.js 16
+- Node.js phiĂªn báº£n phĂ¹ há»£p vá»›i Next.js 16
 - npm
-- Aiven PostgreSQL database
-- Docker nếu muốn chạy PostgreSQL local bằng `docker-compose`
+- MySQL database
+- Docker náº¿u muá»‘n cháº¡y MySQL local báº±ng `docker-compose`
 
-## Cài đặt dependencies
+## CĂ i Ä‘áº·t dependencies
 
-Chạy trong thư mục `app/`:
+Cháº¡y trong thÆ° má»¥c `app/`:
 
 ```bash
 npm install
 ```
 
-## Cấu hình `.env`
+## Cáº¥u hĂ¬nh `.env`
 
-Copy file mẫu:
+Copy file máº«u:
 
 ```bash
 cp .env.example .env
 ```
 
-Trên Windows PowerShell có thể dùng:
+TrĂªn Windows PowerShell cĂ³ thá»ƒ dĂ¹ng:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Các biến môi trường chính:
+CĂ¡c biáº¿n mĂ´i trÆ°á»ng chĂ­nh:
 
 ```env
-DATABASE_URL="postgresql://avnadmin:your-password@your-aiven-host.aivencloud.com:12345/defaultdb?sslmode=require"
+DATABASE_URL="mysql://autobid:autobid@localhost:3306/autobid"
 JWT_SECRET="your-random-secret-key"
 JWT_EXPIRES_IN_SECONDS="604800"
 ```
 
-Ghi chú bảo mật:
+Ghi chĂº báº£o máº­t:
 
-- `DATABASE_URL` và `JWT_SECRET` là secret, chỉ dùng server-side, không commit và không expose ra browser.
-- Không đưa `.env` lên git.
+- `DATABASE_URL` vĂ  `JWT_SECRET` lĂ  secret, chá»‰ dĂ¹ng server-side, khĂ´ng commit vĂ  khĂ´ng expose ra browser.
+- KhĂ´ng Ä‘Æ°a `.env` lĂªn git.
 
 ## Prisma generate / migrate / seed
 
-Chạy trong thư mục `app/`:
+Cháº¡y trong thÆ° má»¥c `app/`:
 
 ```bash
 npx prisma generate
@@ -68,31 +68,31 @@ npx prisma migrate deploy
 npx prisma db seed
 ```
 
-Cho development local, nếu cần tạo migration mới:
+Cho development local, náº¿u cáº§n táº¡o migration má»›i:
 
 ```bash
 npx prisma migrate dev
 ```
 
-Nếu dùng PostgreSQL local bằng Docker, chạy từ root repository:
+Náº¿u dĂ¹ng MySQL local báº±ng Docker, cháº¡y tá»« root repository:
 
 ```bash
 docker-compose up -d
 ```
 
-## Chạy dev
+## Cháº¡y dev
 
-Trong thư mục `app/`:
+Trong thÆ° má»¥c `app/`:
 
 ```bash
 npm run dev
 ```
 
-Mở `http://localhost:3000`.
+Má»Ÿ `http://localhost:3000`.
 
 ## Build production
 
-Trong thư mục `app/`:
+Trong thÆ° má»¥c `app/`:
 
 ```bash
 npm run lint
@@ -100,41 +100,41 @@ npm run build
 npm run start
 ```
 
-## Cấu trúc project
+## Cáº¥u trĂºc project
 
 ```text
 app/
-├── app/                    # Next.js App Router pages/routes
-│   ├── admin/              # Admin MVP routes
-│   ├── auctions/           # Listing/detail/create auction
-│   ├── auth/               # Login/register
-│   └── profile/            # Profile MVP
-├── components/             # UI components, layout/sidebar/auth status
-├── hooks/                  # React hooks
-├── lib/                    # Shared UI/utils aliases
-├── prisma/                 # Prisma schema, migrations, seed
-├── public/                 # Static assets
-├── src/
-│   ├── actions/            # Server actions
-│   ├── lib/                # Auth, Prisma, audit helpers
-│   └── types/              # Zod schemas and TypeScript types
-├── proxy.ts                # Next.js proxy for auth/session/redirect handling
-├── package.json
-└── README.md
+â”œâ”€â”€ app/                    # Next.js App Router pages/routes
+â”‚   â”œâ”€â”€ admin/              # Admin MVP routes
+â”‚   â”œâ”€â”€ auctions/           # Listing/detail/create auction
+â”‚   â”œâ”€â”€ auth/               # Login/register
+â”‚   â””â”€â”€ profile/            # Profile MVP
+â”œâ”€â”€ components/             # UI components, layout/sidebar/auth status
+â”œâ”€â”€ hooks/                  # React hooks
+â”œâ”€â”€ lib/                    # Shared UI/utils aliases
+â”œâ”€â”€ prisma/                 # Prisma schema, migrations, seed
+â”œâ”€â”€ public/                 # Static assets
+â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ actions/            # Server actions
+â”‚   â”œâ”€â”€ lib/                # Auth, Prisma, audit helpers
+â”‚   â””â”€â”€ types/              # Zod schemas and TypeScript types
+â”œâ”€â”€ proxy.ts                # Next.js proxy for auth/session/redirect handling
+â”œâ”€â”€ package.json
+â””â”€â”€ README.md
 ```
 
-## Route chính
+## Route chĂ­nh
 
-- `/` - Trang chủ, hiển thị featured auctions từ database.
-- `/auctions` - Danh sách phiên đấu giá theo trạng thái.
-- `/auctions/[id]` - Chi tiết phiên đấu giá, lịch sử bid, form đặt giá.
-- `/auctions/new` - Tạo phiên đấu giá mới.
-- `/auth/login` - Đăng nhập.
-- `/auth/register` - Đăng ký.
-- `/profile` - Profile MVP và thống kê cơ bản của user.
-- `/admin` - Dashboard admin MVP, yêu cầu role `ADMIN`.
-- `/admin/users` - Quản lý user MVP, yêu cầu role `ADMIN`.
-- `/admin/auctions` - Quản lý/cancel auction MVP, yêu cầu role `ADMIN`.
+- `/` - Trang chá»§, hiá»ƒn thá»‹ featured auctions tá»« database.
+- `/auctions` - Danh sĂ¡ch phiĂªn Ä‘áº¥u giĂ¡ theo tráº¡ng thĂ¡i.
+- `/auctions/[id]` - Chi tiáº¿t phiĂªn Ä‘áº¥u giĂ¡, lá»‹ch sá»­ bid, form Ä‘áº·t giĂ¡.
+- `/auctions/new` - Táº¡o phiĂªn Ä‘áº¥u giĂ¡ má»›i.
+- `/auth/login` - ÄÄƒng nháº­p.
+- `/auth/register` - ÄÄƒng kĂ½.
+- `/profile` - Profile MVP vĂ  thá»‘ng kĂª cÆ¡ báº£n cá»§a user.
+- `/admin` - Dashboard admin MVP, yĂªu cáº§u role `ADMIN`.
+- `/admin/users` - Quáº£n lĂ½ user MVP, yĂªu cáº§u role `ADMIN`.
+- `/admin/auctions` - Quáº£n lĂ½/cancel auction MVP, yĂªu cáº§u role `ADMIN`.
 
 Route alias trong `proxy.ts`:
 
@@ -142,77 +142,77 @@ Route alias trong `proxy.ts`:
 - `/register` -> `/auth/register`
 - `/auctions/create` -> `/auctions/new`
 
-## Tính năng đã hoàn thành trong MVP
+## TĂ­nh nÄƒng Ä‘Ă£ hoĂ n thĂ nh trong MVP
 
-- Auth cơ bản bằng JWT token-based authentication lưu trong httpOnly cookie.
-- Đồng bộ profile local trong PostgreSQL qua Prisma.
-- Role-based access cơ bản cho admin.
-- Auction listing lấy dữ liệu thật từ DB.
-- Auction detail lấy dữ liệu thật từ DB.
-- Tạo auction thật từ form `/auctions/new`.
-- Manual bid thật:
-  - Validate đăng nhập.
-  - Chặn seller tự bid.
-  - Chặn bid thấp hơn `currentPrice + bidStep`.
-  - Chặn bid khi auction không active hoặc đã hết hạn.
-  - Dùng Prisma transaction và row lock để cập nhật bid/current price/winner.
+- Auth cÆ¡ báº£n báº±ng JWT token-based authentication lÆ°u trong httpOnly cookie.
+- Äá»“ng bá»™ profile local trong MySQL qua Prisma.
+- Role-based access cÆ¡ báº£n cho admin.
+- Auction listing láº¥y dá»¯ liá»‡u tháº­t tá»« DB.
+- Auction detail láº¥y dá»¯ liá»‡u tháº­t tá»« DB.
+- Táº¡o auction tháº­t tá»« form `/auctions/new`.
+- Manual bid tháº­t:
+  - Validate Ä‘Äƒng nháº­p.
+  - Cháº·n seller tá»± bid.
+  - Cháº·n bid tháº¥p hÆ¡n `currentPrice + bidStep`.
+  - Cháº·n bid khi auction khĂ´ng active hoáº·c Ä‘Ă£ háº¿t háº¡n.
+  - DĂ¹ng Prisma transaction vĂ  row lock Ä‘á»ƒ cáº­p nháº­t bid/current price/winner.
 - Profile MVP:
-  - Thông tin user.
-  - Thống kê số auction đã tạo, bid đã đặt, auction đang thắng.
+  - ThĂ´ng tin user.
+  - Thá»‘ng kĂª sá»‘ auction Ä‘Ă£ táº¡o, bid Ä‘Ă£ Ä‘áº·t, auction Ä‘ang tháº¯ng.
 - Admin MVP:
-  - Dashboard cơ bản.
-  - Danh sách user, khóa/mở khóa user thường.
-  - Danh sách auction, cancel auction còn hợp lệ.
-- Audit log cho một số hành động quan trọng.
-- BigInt/Date được serialize trước khi truyền sang Client Components.
-- Không dùng mock data trong business flow chính của auction listing/detail/create/bid.
+  - Dashboard cÆ¡ báº£n.
+  - Danh sĂ¡ch user, khĂ³a/má»Ÿ khĂ³a user thÆ°á»ng.
+  - Danh sĂ¡ch auction, cancel auction cĂ²n há»£p lá»‡.
+- Audit log cho má»™t sá»‘ hĂ nh Ä‘á»™ng quan trá»ng.
+- BigInt/Date Ä‘Æ°á»£c serialize trÆ°á»›c khi truyá»n sang Client Components.
+- KhĂ´ng dĂ¹ng mock data trong business flow chĂ­nh cá»§a auction listing/detail/create/bid.
 
-## Tính năng chưa hoàn thành / giới hạn MVP
+## TĂ­nh nÄƒng chÆ°a hoĂ n thĂ nh / giá»›i háº¡n MVP
 
-- Chưa có thanh toán, ví, ký quỹ hoặc escrow.
-- Chưa phù hợp cho giao dịch tiền thật.
-- Chưa có realtime bid/countdown qua websocket/realtime channel.
-- Chưa triển khai auto-bid/proxy bidding hoàn chỉnh.
-- Chưa có upload ảnh; form hiện nhận URL ảnh.
-- Chưa có workflow moderation/duyệt auction nâng cao.
-- Chưa có notification delivery thật qua email/push.
-- Chưa có rate limiting/anti-abuse production-grade.
-- Chưa có monitoring, alerting, tracing, backup/restore playbook.
-- Chưa có test suite tự động đầy đủ cho các luồng nghiệp vụ.
+- ChÆ°a cĂ³ thanh toĂ¡n, vĂ­, kĂ½ quá»¹ hoáº·c escrow.
+- ChÆ°a phĂ¹ há»£p cho giao dá»‹ch tiá»n tháº­t.
+- ChÆ°a cĂ³ realtime bid/countdown qua websocket/realtime channel.
+- ChÆ°a triá»ƒn khai auto-bid/proxy bidding hoĂ n chá»‰nh.
+- ChÆ°a cĂ³ upload áº£nh; form hiá»‡n nháº­n URL áº£nh.
+- ChÆ°a cĂ³ workflow moderation/duyá»‡t auction nĂ¢ng cao.
+- ChÆ°a cĂ³ notification delivery tháº­t qua email/push.
+- ChÆ°a cĂ³ rate limiting/anti-abuse production-grade.
+- ChÆ°a cĂ³ monitoring, alerting, tracing, backup/restore playbook.
+- ChÆ°a cĂ³ test suite tá»± Ä‘á»™ng Ä‘áº§y Ä‘á»§ cho cĂ¡c luá»“ng nghiá»‡p vá»¥.
 
-## Checklist bảo mật và error handling cần kiểm tra
+## Checklist báº£o máº­t vĂ  error handling cáº§n kiá»ƒm tra
 
-- Network offline mode disable form/submit đúng chưa?
-- Reconnect có refetch AuctionDetail, update price warnings không?
-- Session hết hạn có logout và redirect đúng không?
-- Error message có thân thiện và không expose internals không?
-- Idempotency/submit prevention hoạt động đúng chưa?
-- ErrorBoundary có bắt được all errors không?
+- Network offline mode disable form/submit Ä‘Ăºng chÆ°a?
+- Reconnect cĂ³ refetch AuctionDetail, update price warnings khĂ´ng?
+- Session háº¿t háº¡n cĂ³ logout vĂ  redirect Ä‘Ăºng khĂ´ng?
+- Error message cĂ³ thĂ¢n thiá»‡n vĂ  khĂ´ng expose internals khĂ´ng?
+- Idempotency/submit prevention hoáº¡t Ä‘á»™ng Ä‘Ăºng chÆ°a?
+- ErrorBoundary cĂ³ báº¯t Ä‘Æ°á»£c all errors khĂ´ng?
 
-## Tính năng bảo mật và error handling đã bổ sung (v0.2)
+## TĂ­nh nÄƒng báº£o máº­t vĂ  error handling Ä‘Ă£ bá»• sung (v0.2)
 
-- Network status detection (online/offline) với `useNetworkStatus` hook.
-- Global NetworkStatusBanner hiển thị khi mất kết nối.
-- Auction detail refetch khi reconnect, warning khi giá thay đổi.
-- Create auction form giữ dữ liệu khi offline, disable submit.
-- Request timeout và retry logic (GET only).
+- Network status detection (online/offline) vá»›i `useNetworkStatus` hook.
+- Global NetworkStatusBanner hiá»ƒn thá»‹ khi máº¥t káº¿t ná»‘i.
+- Auction detail refetch khi reconnect, warning khi giĂ¡ thay Ä‘á»•i.
+- Create auction form giá»¯ dá»¯ liá»‡u khi offline, disable submit.
+- Request timeout vĂ  retry logic (GET only).
 - Auth session error handling (401, SESSION_EXPIRED, SESSION_REVOKED).
-- Stale data warnings và auto-refetch khi quay lại tab.
-- ErrorBoundary bao quanh toàn app.
+- Stale data warnings vĂ  auto-refetch khi quay láº¡i tab.
+- ErrorBoundary bao quanh toĂ n app.
 - Multi-tab behavior: bid/update qua polling/realtime fallback.
 
 ## Multi-session policy
 
-Hệ thống hiện cho phép đăng nhập trên nhiều thiết bị cùng lúc. Điều này giúp UX thuận tiện nhưng có thể làm giảm an toàn nếu thiết bị bị leak token.
+Há»‡ thá»‘ng hiá»‡n cho phĂ©p Ä‘Äƒng nháº­p trĂªn nhiá»u thiáº¿t bá»‹ cĂ¹ng lĂºc. Äiá»u nĂ y giĂºp UX thuáº­n tiá»‡n nhÆ°ng cĂ³ thá»ƒ lĂ m giáº£m an toĂ n náº¿u thiáº¿t bá»‹ bá»‹ leak token.
 
-Nếu cần single-session:
-- server cần lưu `sessionVersion` hoặc `activeSessionId` trong DB.
-- mỗi login mới tạo session version mới và invalidate version cũ.
-- các thiết bị cũ nhận `SESSION_REVOKED` sẽ logout và yêu cầu đăng nhập lại.
+Náº¿u cáº§n single-session:
+- server cáº§n lÆ°u `sessionVersion` hoáº·c `activeSessionId` trong DB.
+- má»—i login má»›i táº¡o session version má»›i vĂ  invalidate version cÅ©.
+- cĂ¡c thiáº¿t bá»‹ cÅ© nháº­n `SESSION_REVOKED` sáº½ logout vĂ  yĂªu cáº§u Ä‘Äƒng nháº­p láº¡i.
 
-## Checklist QA thủ công khuyến nghị
+## Checklist QA thá»§ cĂ´ng khuyáº¿n nghá»‹
 
-Routes cần kiểm tra:
+Routes cáº§n kiá»ƒm tra:
 
 - `/`
 - `/auctions`
@@ -225,26 +225,26 @@ Routes cần kiểm tra:
 - `/admin/users`
 - `/admin/auctions`
 
-Luồng cần kiểm tra:
+Luá»“ng cáº§n kiá»ƒm tra:
 
 1. Login/logout.
 2. Xem auction list.
 3. Xem auction detail.
-4. Tạo auction.
-5. Đặt bid hợp lệ.
-6. Bid thấp hơn minimum bị chặn.
-7. Seller tự bid bị chặn.
-8. Auction hết hạn không bid được.
-9. Non-admin vào admin bị chặn.
-10. Admin vào admin được nếu có admin account.
+4. Táº¡o auction.
+5. Äáº·t bid há»£p lá»‡.
+6. Bid tháº¥p hÆ¡n minimum bá»‹ cháº·n.
+7. Seller tá»± bid bá»‹ cháº·n.
+8. Auction háº¿t háº¡n khĂ´ng bid Ä‘Æ°á»£c.
+9. Non-admin vĂ o admin bá»‹ cháº·n.
+10. Admin vĂ o admin Ä‘Æ°á»£c náº¿u cĂ³ admin account.
 
-## Ghi chú bảo mật
+## Ghi chĂº báº£o máº­t
 
-- Không commit `.env` hoặc secret key.
-- Không expose `DATABASE_URL` hoặc `JWT_SECRET` sang client.
-- Không log PII/secrets trong client. Server logs hiện chỉ dùng cho lỗi kỹ thuật; cần tích hợp logger có redaction trước production.
-- Admin role phải luôn đọc từ DB/server, không tin dữ liệu client.
-- JWT token cần dùng secret đủ mạnh và chỉ lưu trong httpOnly cookie.
-- Cần thêm rate limit cho login, register, create auction và place bid trước production.
-- Cần security review cho transaction bid, authorization, upload file, audit log và admin actions.
-- Nếu bổ sung payment/wallet/escrow, cần kiểm tra compliance, reconciliation, fraud detection và dispute handling.
+- KhĂ´ng commit `.env` hoáº·c secret key.
+- KhĂ´ng expose `DATABASE_URL` hoáº·c `JWT_SECRET` sang client.
+- KhĂ´ng log PII/secrets trong client. Server logs hiá»‡n chá»‰ dĂ¹ng cho lá»—i ká»¹ thuáº­t; cáº§n tĂ­ch há»£p logger cĂ³ redaction trÆ°á»›c production.
+- Admin role pháº£i luĂ´n Ä‘á»c tá»« DB/server, khĂ´ng tin dá»¯ liá»‡u client.
+- JWT token cáº§n dĂ¹ng secret Ä‘á»§ máº¡nh vĂ  chá»‰ lÆ°u trong httpOnly cookie.
+- Cáº§n thĂªm rate limit cho login, register, create auction vĂ  place bid trÆ°á»›c production.
+- Cáº§n security review cho transaction bid, authorization, upload file, audit log vĂ  admin actions.
+- Náº¿u bá»• sung payment/wallet/escrow, cáº§n kiá»ƒm tra compliance, reconciliation, fraud detection vĂ  dispute handling.

@@ -16,6 +16,7 @@ export type JwtPayload = {
   userId: string;
   email: string;
   role: string;
+  sessionVersion?: number;
 };
 
 export function generateToken(payload: JwtPayload, expiresInSeconds?: number): string {

@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { UserRole } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getCurrentUser } from "@/src/lib/auth";
+import { getCurrentUser, isPrimaryAdmin } from "@/src/lib/auth";
 
 import { AdminShell } from "./_components/admin-shell";
 
@@ -17,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/auth/login");
   }
 
-  if (user.role !== UserRole.ADMIN) {
+  if (!isPrimaryAdmin(user)) {
     return (
       <div className="mx-auto flex min-h-[calc(100dvh-3.5rem)] max-w-xl items-center px-4">
         <Card>

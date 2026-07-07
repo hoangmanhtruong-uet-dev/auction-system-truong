@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -67,17 +67,18 @@ enum AuditAction {
 }
 
 model Profile {
-  id            String    @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Char(36)
   email         String    @unique @db.VarChar(255)
-  passwordHash  String    @map("password_hash")
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
   emailVerified Boolean   @default(true) @map("email_verified")
   fullName      String    @map("full_name") @db.VarChar(255)
   phone         String?   @db.VarChar(20)
   role          UserRole  @default(USER)
-  avatarUrl     String?   @map("avatar_url")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  avatarUrl     String?   @map("avatar_url") @db.Text
+  sessionVersion Int      @default(0) @map("session_version")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.DateTime(6)
+  deletedAt     DateTime? @map("deleted_at") @db.DateTime(6)
   address       String?   @db.Text
   city          String?   @db.VarChar(100)
   gender        String?   @db.VarChar(10)
@@ -99,9 +100,9 @@ model Profile {
 }
 
 model Auction {
-  id                    String        @id @default(uuid()) @db.Uuid
+  id                    String        @id @default(uuid()) @db.Char(36)
   title                 String        @db.VarChar(255)
-  description           String
+  description           String        @db.Text
   startPrice            BigInt        @map("start_price")
   currentPrice          BigInt        @default(0) @map("current_price")
   bidStep               BigInt        @default(10000) @map("bid_step")
@@ -112,19 +113,19 @@ model Auction {
   maxExtensions         Int           @default(3) @map("max_extensions")
   currentExtensionCount Int           @default(0) @map("current_extension_count")
   status                AuctionStatus @default(PENDING)
-  sellerId              String        @map("seller_id") @db.Uuid
-  winnerId              String?       @map("winner_id") @db.Uuid
-  startsAt              DateTime?     @map("starts_at") @db.Timestamptz(6)
-  endsAt                DateTime?     @map("ends_at") @db.Timestamptz(6)
-  paidAt                DateTime?     @map("paid_at") @db.Timestamptz(6)
-  paidById              String?       @map("paid_by_id") @db.Uuid
-  canceledAt            DateTime?     @map("canceled_at") @db.Timestamptz(6)
-  canceledById          String?       @map("canceled_by_id") @db.Uuid
+  sellerId              String        @map("seller_id") @db.Char(36)
+  winnerId              String?       @map("winner_id") @db.Char(36)
+  startsAt              DateTime?     @map("starts_at") @db.DateTime(6)
+  endsAt                DateTime?     @map("ends_at") @db.DateTime(6)
+  paidAt                DateTime?     @map("paid_at") @db.DateTime(6)
+  paidById              String?       @map("paid_by_id") @db.Char(36)
+  canceledAt            DateTime?     @map("canceled_at") @db.DateTime(6)
+  canceledById          String?       @map("canceled_by_id") @db.Char(36)
   cancelReason          String?       @map("cancel_reason") @db.Text
-  finishedAt            DateTime?     @map("finished_at") @db.Timestamptz(6)
-  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt             DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  finishedAt            DateTime?     @map("finished_at") @db.DateTime(6)
+  createdAt             DateTime      @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.DateTime(6)
+  deletedAt             DateTime?     @map("deleted_at") @db.DateTime(6)
 
   seller         Profile        @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Restrict)
   winner         Profile?       @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
@@ -141,12 +142,12 @@ model Auction {
 }
 
 model AuctionImage {
-  id        String   @id @default(uuid()) @db.Uuid
-  auctionId String   @map("auction_id") @db.Uuid
-  url       String
+  id        String   @id @default(uuid()) @db.Char(36)
+  auctionId String   @map("auction_id") @db.Char(36)
+  url       String   @db.Text
   altText   String?  @map("alt_text")
   sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(6)
 
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 
@@ -155,16 +156,16 @@ model AuctionImage {
 }
 
 model Bid {
-  id              String    @id @default(uuid()) @db.Uuid
-  auctionId       String    @map("auction_id") @db.Uuid
-  bidderId        String    @map("bidder_id") @db.Uuid
+  id              String    @id @default(uuid()) @db.Char(36)
+  auctionId       String    @map("auction_id") @db.Char(36)
+  bidderId        String    @map("bidder_id") @db.Char(36)
   amount          BigInt
   isAutoBid       Boolean   @default(false) @map("is_auto_bid")
   autoBidMaxPrice BigInt?   @map("auto_bid_max_price")
   status          BidStatus @default(ACTIVE)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(6)
+  deletedAt       DateTime? @map("deleted_at") @db.DateTime(6)
 
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   bidder  Profile @relation(fields: [bidderId], references: [id], onDelete: Restrict)
@@ -177,10 +178,10 @@ model Bid {
 }
 
 model Watchlist {
-  id        String   @id @default(uuid()) @db.Uuid
-  profileId String   @map("profile_id") @db.Uuid
-  auctionId String   @map("auction_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id        String   @id @default(uuid()) @db.Char(36)
+  profileId String   @map("profile_id") @db.Char(36)
+  auctionId String   @map("auction_id") @db.Char(36)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(6)
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
@@ -191,15 +192,15 @@ model Watchlist {
 }
 
 model Notification {
-  id        String           @id @default(uuid()) @db.Uuid
-  profileId String           @map("profile_id") @db.Uuid
-  auctionId String?          @map("auction_id") @db.Uuid
+  id        String           @id @default(uuid()) @db.Char(36)
+  profileId String           @map("profile_id") @db.Char(36)
+  auctionId String?          @map("auction_id") @db.Char(36)
   type      NotificationType
   title     String           @db.VarChar(255)
-  message   String
+  message   String   @db.Text
   metadata  Json?
-  readAt    DateTime?        @map("read_at") @db.Timestamptz(6)
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt    DateTime?        @map("read_at") @db.DateTime(6)
+  createdAt DateTime         @default(now()) @map("created_at") @db.DateTime(6)
 
   profile Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   auction Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade)
@@ -211,16 +212,16 @@ model Notification {
 }
 
 model AuditLog {
-  id           String      @id @default(uuid()) @db.Uuid
-  profileId    String?     @map("profile_id") @db.Uuid
+  id           String      @id @default(uuid()) @db.Char(36)
+  profileId    String?     @map("profile_id") @db.Char(36)
   action       AuditAction
   resourceType String      @map("resource_type") @db.VarChar(100)
-  resourceId   String      @map("resource_id") @db.Uuid
+  resourceId   String      @map("resource_id") @db.Char(36)
   oldValues    Json?       @map("old_values")
   newValues    Json?       @map("new_values")
-  ipAddress    String?     @map("ip_address") @db.Inet
-  userAgent    String?     @map("user_agent")
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  ipAddress    String?     @map("ip_address") @db.VarChar(45)
+  userAgent    String?     @map("user_agent") @db.Text
+  createdAt    DateTime    @default(now()) @map("created_at") @db.DateTime(6)
 
   profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
 
@@ -232,13 +233,13 @@ model AuditLog {
 }
 
 model EmailVerificationToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  profileId String    @map("profile_id") @db.Uuid
+  id        String    @id @default(uuid()) @db.Char(36)
+  profileId String    @map("profile_id") @db.Char(36)
   email     String    @db.VarChar(255)
-  tokenHash String    @map("token_hash")
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
-  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tokenHash String    @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.DateTime(6)
+  usedAt    DateTime? @map("used_at") @db.DateTime(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(6)
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
@@ -248,15 +249,15 @@ model EmailVerificationToken {
 }
 
 model UserPreference {
-  id                    String    @id @default(uuid()) @db.Uuid
-  profileId             String    @map("profile_id") @db.Uuid
+  id                    String    @id @default(uuid()) @db.Char(36)
+  profileId             String    @map("profile_id") @db.Char(36)
   receiveEmailMarketing Boolean   @default(true) @map("receive_email_marketing")
   receiveEmailAuction   Boolean   @default(true) @map("receive_email_auction")
   receiveEmailNotification Boolean  @default(true) @map("receive_email_notification")
   darkMode              Boolean   @default(false) @map("dark_mode")
   locale                String    @default("vi-VN") @db.VarChar(10)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.DateTime(6)
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
@@ -264,3 +265,4 @@ model UserPreference {
   @@index([profileId], map: "idx_user_preferences_profile_id")
   @@map("user_preferences")
 }
+

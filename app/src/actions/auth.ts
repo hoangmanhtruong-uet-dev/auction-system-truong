@@ -20,6 +20,7 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_LIMIT = 10;
 const REGISTER_RATE_LIMIT = 5;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "admin@autobid.vn";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -57,12 +58,13 @@ function getAuthRuntimeErrorMessage(error: unknown) {
   return `Lỗi server khi xử lý xác thực: ${message}`;
 }
 
-async function setAuthCookie(user: { id: string; email: string; role: UserRole }) {
+async function setAuthCookie(user: { id: string; email: string; role: UserRole; sessionVersion: number }) {
   const token = generateToken(
     {
       userId: user.id,
       email: user.email,
       role: user.role,
+      sessionVersion: user.sessionVersion,
     },
     COOKIE_MAX_AGE_SECONDS
   );
@@ -127,6 +129,7 @@ export async function register(data: RegisterInput) {
         email: true,
         fullName: true,
         role: true,
+        sessionVersion: true,
         emailVerified: true,
       },
     });
@@ -179,6 +182,7 @@ export async function login(data: LoginInput) {
         email: true,
         passwordHash: true,
         role: true,
+        sessionVersion: true,
         deletedAt: true,
       },
     });
@@ -202,14 +206,35 @@ export async function login(data: LoginInput) {
       };
     }
 
-    const token = await setAuthCookie(profile);
+    if (profile.role === UserRole.ADMIN && profile.email !== ADMIN_EMAIL) {
+      return {
+        success: false,
+        error: { _errors: ["Tài khoản admin không hợp lệ."] },
+      };
+    }
+
+    const sessionUser =
+      profile.role === UserRole.ADMIN
+        ? profile
+        : await prisma.profile.update({
+            where: { id: profile.id },
+            data: { sessionVersion: { increment: 1 } },
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              sessionVersion: true,
+            },
+          });
+
+    const token = await setAuthCookie(sessionUser);
 
     return {
       success: true,
       data: {
-        userId: profile.id,
-        email: profile.email,
-        role: profile.role,
+        userId: sessionUser.id,
+        email: sessionUser.email,
+        role: sessionUser.role,
         token,
       },
     };

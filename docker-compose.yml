@@ -1,21 +1,22 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: autobid-postgres
+  mysql:
+    image: mysql:8.4
+    container_name: autobid-mysql
     restart: unless-stopped
     environment:
-      POSTGRES_DB: autobid
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      MYSQL_DATABASE: autobid
+      MYSQL_USER: autobid
+      MYSQL_PASSWORD: autobid
+      MYSQL_ROOT_PASSWORD: root
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - autobid_postgres_data:/var/lib/postgresql/data
+      - autobid_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d autobid"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
 volumes:
-  autobid_postgres_data:
+  autobid_mysql_data:

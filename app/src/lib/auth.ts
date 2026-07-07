@@ -6,6 +6,7 @@ import { getJwtSecret } from "@/src/lib/jwt";
 import { UserRole } from "@prisma/client";
 
 export const AUTH_COOKIE_NAME = "auth-token";
+export const PRIMARY_ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "admin@autobid.vn";
 
 export type SafeUser = {
   id: string;
@@ -14,6 +15,7 @@ export type SafeUser = {
   fullName: string;
   phone: string | null;
   role: UserRole;
+  sessionVersion: number;
   avatarUrl: string | null;
   createdAt: Date;
   address: string | null;
@@ -22,6 +24,10 @@ export type SafeUser = {
   birthday: Date | null;
   bio: string | null;
 };
+
+export function isPrimaryAdmin(user: Pick<SafeUser, "email" | "role">) {
+  return user.role === UserRole.ADMIN && user.email.toLowerCase() === PRIMARY_ADMIN_EMAIL;
+}
 
 export async function getSessionUserId(): Promise<string | null> {
   const cookieStore = await cookies();
@@ -34,7 +40,7 @@ export async function getSessionUserId(): Promise<string | null> {
 }
 
 /**
- * Get the current authenticated user + profile from Aiven PostgreSQL.
+ * Get the current authenticated user + profile from the application database.
  * Always reads role from DB (never trusts the client token role).
  */
 export async function getCurrentUser(): Promise<SafeUser | null> {
@@ -46,7 +52,13 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
       console.error("[Auth] JWT_SECRET not configured:", e);
     }
 
-    const userId = await getSessionUserId();
+    const cookieStore = await cookies();
+    const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+
+    if (!token) return null;
+
+    const payload = verifyToken(token);
+    const userId = payload?.userId ?? null;
 
     if (!userId) return null;
 
@@ -60,6 +72,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
           fullName: true,
           phone: true,
           role: true,
+          sessionVersion: true,
           avatarUrl: true,
           createdAt: true,
           address: true,
@@ -75,6 +88,10 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         return null;
       }
 
+      if (profile.role !== UserRole.ADMIN && payload?.sessionVersion !== profile.sessionVersion) {
+        return null;
+      }
+
       return {
         id: profile.id,
         email: profile.email,
@@ -82,6 +99,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         fullName: profile.fullName,
         phone: profile.phone,
         role: profile.role,
+        sessionVersion: profile.sessionVersion,
         avatarUrl: profile.avatarUrl,
         createdAt: profile.createdAt,
         address: profile.address,
@@ -102,6 +120,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
           fullName: true,
           phone: true,
           role: true,
+          sessionVersion: true,
           avatarUrl: true,
           createdAt: true,
           deletedAt: true,
@@ -112,6 +131,10 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         return null;
       }
 
+      if (profile.role !== UserRole.ADMIN && payload?.sessionVersion !== profile.sessionVersion) {
+        return null;
+      }
+
       return {
         id: profile.id,
         email: profile.email,
@@ -119,6 +142,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         fullName: profile.fullName,
         phone: profile.phone,
         role: profile.role,
+        sessionVersion: profile.sessionVersion,
         avatarUrl: profile.avatarUrl,
         createdAt: profile.createdAt,
         address: null,
@@ -176,7 +200,11 @@ export async function requireRole(allowedRoles: UserRole[]): Promise<SafeUser> {
  * Require ADMIN role.
  */
 export async function requireAdmin(): Promise<SafeUser> {
-  return requireRole([UserRole.ADMIN]);
+  const user = await requireRole([UserRole.ADMIN]);
+  if (!isPrimaryAdmin(user)) {
+    redirect("/");
+  }
+  return user;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { AuctionStatus, Prisma, UserRole } from "@prisma/client";
 
 import { createAdminAuditLog } from "@/src/lib/audit";
-import { getCurrentUser, type SafeUser } from "@/src/lib/auth";
+import { getCurrentUser, isPrimaryAdmin, type SafeUser } from "@/src/lib/auth";
 import { error, type ErrorResult } from "@/src/lib/error-codes";
 import { prisma } from "@/src/lib/prisma";
 
@@ -14,6 +14,10 @@ export async function requireAuth(): Promise<SafeUser | ErrorResult> {
 
   if (!user) {
     return error("UNAUTHENTICATED", "Bạn cần đăng nhập để tiếp tục.");
+  }
+
+  if (user.role === UserRole.ADMIN && !isPrimaryAdmin(user)) {
+    return error("FORBIDDEN", "Bạn không có quyền thực hiện thao tác này.");
   }
 
   return user;
