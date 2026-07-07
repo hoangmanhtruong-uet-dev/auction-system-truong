@@ -17,9 +17,9 @@ export default async function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-medium text-muted-foreground">Dashboard</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Tổng quan vận hành</h1>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+        <p className="text-sm font-medium text-amber-400">Dashboard</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Tổng quan vận hành</h1>
+        <p className="mt-2 max-w-3xl text-sm text-neutral-400">
           Theo dõi tình trạng auction, bid và thanh toán thủ công của MVP bằng dữ liệu thật từ hệ thống.
         </p>
       </div>
@@ -40,9 +40,9 @@ export default async function AdminPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-        <Card>
+        <Card className="border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition">
           <CardHeader>
-            <CardTitle>Recent auctions</CardTitle>
+            <CardTitle className="text-base sm:text-lg text-white">Recent auctions</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <AdminDataTable className="border-0 shadow-none">
@@ -50,7 +50,7 @@ export default async function AdminPage() {
                 <TableEmptyState description="Chưa có auction nào trong hệ thống." />
               ) : (
                 <table className="w-full min-w-[720px] text-sm">
-                  <thead className="border-y bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <thead className="border-b border-white/10 bg-white/5 text-left text-xs uppercase tracking-wide text-neutral-500">
                     <tr>
                       <th className="px-4 py-3 font-medium">Auction</th>
                       <th className="px-4 py-3 font-medium">Seller</th>
@@ -59,19 +59,19 @@ export default async function AdminPage() {
                       <th className="px-4 py-3 font-medium text-right">Giá</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-white/10 text-neutral-300">
                     {data.recentAuctions.map((auction) => (
-                      <tr key={auction.id} className="hover:bg-muted/40">
+                      <tr key={auction.id} className="transition-colors hover:bg-white/5">
                         <td className="px-4 py-3">
-                          <Link href={`/auctions/${auction.id}`} className="font-medium hover:underline">
+                          <Link href={`/auctions/${auction.id}`} className="font-medium text-white hover:text-amber-300 hover:underline">
                             {auction.title}
                           </Link>
-                          <p className="text-xs text-muted-foreground">Kết thúc: {formatDateTime(auction.endsAt)}</p>
+                          <p className="text-xs text-neutral-500">Kết thúc: {formatDateTime(auction.endsAt)}</p>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{auction.sellerName}</td>
+                        <td className="px-4 py-3 text-neutral-500">{auction.sellerName}</td>
                         <td className="px-4 py-3"><StatusBadge type="auction" value={auction.status} /></td>
                         <td className="px-4 py-3">{auction.bidCount}</td>
-                        <td className="px-4 py-3 text-right font-medium">{formatCurrency(auction.currentPrice)}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-amber-300">{formatCurrency(auction.currentPrice)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -81,9 +81,9 @@ export default async function AdminPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition">
           <CardHeader>
-            <CardTitle>Alerts</CardTitle>
+            <CardTitle className="text-base sm:text-lg text-white">Alerts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <AlertGroup
@@ -116,9 +116,9 @@ export default async function AdminPage() {
         </Card>
       </section>
 
-      <Card>
+      <Card className="border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition">
         <CardHeader>
-          <CardTitle>Recent bids</CardTitle>
+          <CardTitle className="text-base sm:text-lg text-white">Recent bids</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <AdminDataTable className="border-0 shadow-none">
@@ -126,7 +126,7 @@ export default async function AdminPage() {
               <TableEmptyState description="Chưa có bid nào được ghi nhận." />
             ) : (
               <table className="w-full min-w-[760px] text-sm">
-                <thead className="border-y bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="border-b border-white/10 bg-white/5 text-left text-xs uppercase tracking-wide text-neutral-500">
                   <tr>
                     <th className="px-4 py-3 font-medium">Auction</th>
                     <th className="px-4 py-3 font-medium">Bidder</th>
@@ -136,19 +136,19 @@ export default async function AdminPage() {
                     <th className="px-4 py-3 text-right font-medium">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-white/10 text-neutral-300">
                   {data.recentBids.map((bid) => (
-                    <tr key={bid.id} className="hover:bg-muted/40">
+                    <tr key={bid.id} className="transition-colors hover:bg-white/5">
                       <td className="px-4 py-3">
-                        <Link href={`/auctions/${bid.auctionId}`} className="font-medium hover:underline">
+                        <Link href={`/auctions/${bid.auctionId}`} className="font-medium text-white hover:text-amber-300 hover:underline">
                           {bid.auctionTitle}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{bid.bidderName}</td>
+                      <td className="px-4 py-3 text-neutral-500">{bid.bidderName}</td>
                       <td className="px-4 py-3"><StatusBadge type="autoBid" value={bid.isAutoBid} /></td>
                       <td className="px-4 py-3"><StatusBadge type="bid" value={bid.status} /></td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatDateTime(bid.createdAt)}</td>
-                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(bid.amount)}</td>
+                      <td className="px-4 py-3 text-neutral-500">{formatDateTime(bid.createdAt)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-amber-300">{formatCurrency(bid.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -170,22 +170,22 @@ function AlertGroup({
   items: Array<{ href: string; title: string; meta: string }>;
   tone?: "default" | "warning" | "danger";
 }) {
-  const iconClass = tone === "danger" ? "text-red-600" : tone === "warning" ? "text-amber-600" : "text-muted-foreground";
+  const iconClass = tone === "danger" ? "text-red-500" : tone === "warning" ? "text-amber-400" : "text-neutral-400";
 
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
         <AlertTriangle className={`size-4 ${iconClass}`} />
-        <h2 className="text-sm font-medium">{title}</h2>
+        <h2 className="text-sm font-medium text-white">{title}</h2>
       </div>
       {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">Không có cảnh báo.</p>
+        <p className="rounded-lg border border-white/10 border-dashed bg-white/5 p-3 text-sm text-neutral-500">Không có cảnh báo.</p>
       ) : (
         <div className="space-y-2">
           {items.map((item) => (
-            <Link key={`${item.href}-${item.title}`} href={item.href} className="block rounded-lg border p-3 text-sm transition hover:bg-muted/50">
-              <span className="line-clamp-1 font-medium">{item.title}</span>
-              <span className="mt-1 block line-clamp-1 text-xs text-muted-foreground">{item.meta}</span>
+            <Link key={`${item.href}-${item.title}`} href={item.href} className="block rounded-lg border border-white/10 bg-white/5 p-3 text-sm transition hover:bg-white/10 hover:text-amber-300">
+              <span className="line-clamp-1 font-medium text-white">{item.title}</span>
+              <span className="mt-1 block line-clamp-1 text-xs text-neutral-500">{item.meta}</span>
             </Link>
           ))}
         </div>

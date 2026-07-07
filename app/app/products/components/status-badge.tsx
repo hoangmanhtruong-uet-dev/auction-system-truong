@@ -7,18 +7,18 @@ import { cn } from "@/lib/utils";
 import { AuctionStatus } from "@prisma/client";
 
 const statusVariants = cva(
-  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset transition-colors",
+  "inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-colors backdrop-blur-sm",
   {
     variants: {
       variant: {
-        pending: "bg-slate-100 text-slate-700 ring-slate-600/20 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-400/30",
-        active: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-500/30",
-        completed: "bg-slate-100 text-slate-700 ring-slate-600/20 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-400/30",
-        cancelled: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/30",
-        sold: "bg-indigo-50 text-indigo-700 ring-indigo-600/20 dark:bg-indigo-900/30 dark:text-indigo-400 dark:ring-indigo-500/30",
-        ending: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/30",
-        noBid: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/30",
-        paid: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-500/30",
+        pending: "bg-neutral-800/80 text-neutral-300 ring-neutral-600/30 shadow-sm",
+        active: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-sm shadow-emerald-500/10 hover:bg-emerald-500/20",
+        completed: "bg-neutral-800/80 text-neutral-400 ring-neutral-600/30 shadow-sm",
+        cancelled: "bg-red-500/10 text-red-400 ring-red-500/20 shadow-sm shadow-red-500/10 hover:bg-red-500/20",
+        sold: "bg-amber-500/10 text-amber-400 ring-amber-500/20 shadow-sm shadow-amber-500/10 hover:bg-amber-500/20",
+        ending: "bg-amber-500/10 text-amber-400 ring-amber-500/20 shadow-sm shadow-amber-500/10 animate-pulse",
+        noBid: "bg-amber-500/5 text-amber-400 ring-amber-500/10 shadow-sm",
+        paid: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-sm shadow-emerald-500/10 hover:bg-emerald-500/20",
       },
     },
     defaultVariants: {

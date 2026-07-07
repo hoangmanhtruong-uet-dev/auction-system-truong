@@ -54,23 +54,28 @@ export function AdminUsersClient({
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-sm font-medium text-muted-foreground">Users</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Quản lý người dùng</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="text-sm font-medium text-amber-400">Users</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Quản lý người dùng</h1>
+        <p className="mt-2 text-sm text-neutral-400">
           Theo dõi vai trò, số auction, số bid và trạng thái tài khoản dựa trên schema hiện tại.
         </p>
       </div>
 
-      <div className="grid gap-3 rounded-xl border bg-card p-3 md:grid-cols-[1fr_180px]">
+      <div className="grid gap-3 rounded-xl border border-white/10 bg-white/5 p-3 shadow-xl backdrop-blur-xl md:grid-cols-[1fr_180px]">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="Tìm tên hoặc email..." />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-500" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="border-white/10 bg-black/20 pl-9 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
+            placeholder="Tìm tên hoặc email..."
+          />
         </div>
-        <select className="h-9 rounded-lg border bg-background px-3 text-sm" value={role} onChange={(event) => setRole(event.target.value as "all" | AdminUser["role"])}>
-          <option value="all">Tất cả role</option>
-          <option value="USER">USER</option>
-          <option value="SELLER">SELLER</option>
-          <option value="ADMIN">ADMIN</option>
+        <select className="h-9 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-neutral-300 focus:border-amber-500/50 focus:ring-amber-500/20" value={role} onChange={(event) => setRole(event.target.value as "all" | AdminUser["role"])}>
+          <option value="all" className="bg-neutral-800">Tất cả role</option>
+          <option value="USER" className="bg-neutral-800">USER</option>
+          <option value="SELLER" className="bg-neutral-800">SELLER</option>
+          <option value="ADMIN" className="bg-neutral-800">ADMIN</option>
         </select>
       </div>
 
@@ -79,7 +84,7 @@ export function AdminUsersClient({
           <TableEmptyState title="Không có user phù hợp" description="Thử đổi bộ lọc hoặc kiểm tra dữ liệu người dùng." />
         ) : (
           <table className="w-full min-w-[880px] text-sm">
-            <thead className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="border-b border-white/10 bg-white/5 text-left text-xs uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Name / email</th>
                 <th className="px-4 py-3 font-medium">Role</th>
@@ -90,17 +95,17 @@ export function AdminUsersClient({
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-white/10 text-neutral-300">
               {filtered.map((user) => (
-                <tr key={user.id} className="hover:bg-muted/40">
+                <tr key={user.id} className="transition-colors hover:bg-white/5">
                   <td className="px-4 py-3">
-                    <p className="font-medium">{user.fullName}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                    <p className="font-medium text-white">{user.fullName}</p>
+                    <p className="text-xs text-neutral-500">{user.email}</p>
                   </td>
                   <td className="px-4 py-3"><StatusBadge type="role" value={user.role} /></td>
                   <td className="px-4 py-3 text-right">{user._count.auctionsAsSeller}</td>
                   <td className="px-4 py-3 text-right">{user._count.bids}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDateTime(user.createdAt)}</td>
+                  <td className="px-4 py-3 text-neutral-500">{formatDateTime(user.createdAt)}</td>
                   <td className="px-4 py-3"><StatusBadge type="user" value={user.deletedAt} /></td>
                   <td className="px-4 py-3">
                     <UserActions user={user} currentAdminId={currentAdminId} onChanged={handleUserChanged} />

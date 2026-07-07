@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthWrapper } from "@/components/auth-wrapper";
+import { LuxuryHeader } from "@/components/luxury-header";
 import { LayoutClient } from "@/components/layout-client";
 
 const geistSans = Geist({
@@ -35,12 +35,7 @@ export default function RootLayout({
           <SidebarProvider>
             <AppSidebar />
             <main className="flex-1">
-              <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background px-4">
-                <SidebarTrigger />
-                <div className="ml-auto flex items-center gap-2">
-                  <AuthWrapper />
-                </div>
-              </header>
+              <LuxuryHeader />
               <LayoutClient>{children}</LayoutClient>
             </main>
           </SidebarProvider>

@@ -12,11 +12,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
         <SidebarMenu>
-          <div className="flex items-center gap-2 px-2 py-2">
-            <div className="size-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-              A
+          <div className="flex items-center gap-3 px-3 py-4">
+            <div className="relative">
+              <div className="size-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold shadow-lg shadow-amber-500/20">
+                A
+              </div>
+              <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-sidebar-background">
+                <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
+              </div>
             </div>
-            <span className="text-lg font-semibold text-sidebar-foreground">AutoBid.vn</span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-sidebar-foreground tracking-tight">AutoBid.vn</span>
+              <span className="text-xs text-sidebar-foreground/60 font-medium">Luxury Auction</span>
+            </div>
           </div>
         </SidebarMenu>
       </SidebarHeader>
@@ -25,8 +33,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={secondaryNavItems} />
       </SidebarContent>
       <SidebarFooter>
-        <div className="px-2 py-2">
-          <p className="text-xs text-sidebar-foreground/60">AutoBid.vn v1.0.0</p>
+        <div className="px-3 py-3">
+          <div className="h-px bg-sidebar-border/50 mb-2" />
+          <p className="text-[10px] text-sidebar-foreground/40 text-center">AutoBid.vn v1.0.0</p>
         </div>
       </SidebarFooter>
     </Sidebar>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle, Image as ImageIcon, Clock, Calendar, Lock, Info, ChevronRight, X, ArrowLeft, WifiOff } from "lucide-react";
+import { AlertCircle, CheckCircle, Image as ImageIcon, Clock, Calendar, Lock, Info, ChevronRight, X, ArrowLeft, WifiOff, Sparkles, Shield, Tag } from "lucide-react";
 
 import { useNetworkStatus } from "@/hooks/use-network-status";
 
@@ -17,7 +17,6 @@ import { Badge } from "../../../components/ui/badge";
 import { formatCurrency, formatNumberWithCommas } from "@/lib/utils";
 import { createAuction } from "@/src/actions/auction";
 
-// Category options with descriptions
 const CATEGORY_OPTIONS = [
   { value: "Đồng hồ", label: "Đồng hồ", description: "Đồng hồ đeo tay, đồng hồ bỏ túi, đồng hồ cổ" },
   { value: "Điện thoại", label: "Điện thoại", description: "Điện thoại di động, smartphone, máy cũ" },
@@ -31,7 +30,6 @@ const CATEGORY_OPTIONS = [
   { value: "Khác", label: "Khác", description: "Các món đồ không thuộc danh mục trên" },
 ];
 
-// Condition options with descriptions
 const CONDITION_OPTIONS = [
   { value: "Mới", label: "Mới", description: "Sản phẩm mới chưa qua sử dụng, còn tem nhãn" },
   { value: "Như mới", label: "Như mới", description: "Đã mở hộp nhưng không sử dụng, còn nguyên vẹn" },
@@ -40,7 +38,6 @@ const CONDITION_OPTIONS = [
   { value: "Cần sửa chữa", label: "Cần sửa chữa", description: "Hỏng hóc nhẹ hoặc cần bảo dưỡng" },
 ];
 
-// Duration options in minutes
 const DURATION_OPTIONS = [
   { value: 15, label: "15 phút" },
   { value: 30, label: "30 phút" },
@@ -61,7 +58,6 @@ export function NewAuctionClient() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Form state
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [condition, setCondition] = useState("");
@@ -73,7 +69,6 @@ export function NewAuctionClient() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Form errors
   const [titleError, setTitleError] = useState<string | null>(null);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [conditionError, setConditionError] = useState<string | null>(null);
@@ -83,13 +78,11 @@ export function NewAuctionClient() {
   const [durationError, setDurationError] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
 
-  // Compute preview values
   const parsedStartPrice = Number(startPrice) || 0;
   const parsedBidStep = Number(bidStep) || 0;
   const parsedDuration = Number(duration) || 15;
   const estimatedEnd = new Date(Date.now() + parsedDuration * 60 * 1000);
 
-  // Load draft from localStorage on mount
   useEffect(() => {
     const loadDraft = () => {
       try {
@@ -112,7 +105,6 @@ export function NewAuctionClient() {
     loadDraft();
   }, []);
 
-  // Save draft to localStorage on form changes
   useEffect(() => {
     try {
       const draft = {
@@ -124,7 +116,6 @@ export function NewAuctionClient() {
         bidStep,
         duration,
         imageUrls,
-        savedAt: new Date().toISOString(),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
     } catch {
@@ -132,15 +123,11 @@ export function NewAuctionClient() {
     }
   }, [title, category, condition, description, startPrice, bidStep, duration, imageUrls]);
 
-  // Server page already guards this route; this keeps a soft client-side check for stale sessions.
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch("/api/auth/session");
-        if (response.ok) {
-          const data = await response.json();
-          setIsAuthenticated(!!data.user);
-        } else {
+        const res = await fetch("/api/auth/session");
+        if (!res.ok) {
           setIsAuthenticated(false);
         }
       } catch {
@@ -150,122 +137,103 @@ export function NewAuctionClient() {
     checkAuth();
   }, []);
 
-  // Validate form fields
-  const validateField = (name: string, value: string | number): string | null => {
-    switch (name) {
+  const validateField = (field: string, value: any): string | null => {
+    switch (field) {
       case "title":
-        if (!value || (typeof value === "string" && value.trim().length < 5)) {
-          return "Tên sản phẩm phải từ 5 ký tự trở lên";
-        }
-        if (typeof value === "string" && value.trim().length > 100) {
-          return "Tên sản phẩm không được vượt quá 100 ký tự";
-        }
+        if (!value || value.trim().length < 5) return "Tên sản phẩm phải có ít nhất 5 ký tự.";
+        if (value.trim().length > 100) return "Tên sản phẩm không được quá 100 ký tự.";
         return null;
-
       case "category":
-        if (!value || (typeof value === "string" && value.trim() === "")) {
-          return "Vui lòng chọn danh mục";
-        }
-        return null;
-
+        return value ? null : "Vui lòng chọn danh mục sản phẩm.";
       case "condition":
-        if (!value || (typeof value === "string" && value.trim() === "")) {
-          return "Vui lòng chọn tình trạng";
-        }
-        return null;
-
+        return value ? null : "Vui lòng chọn tình trạng sản phẩm.";
       case "description":
-        if (!value || (typeof value === "string" && value.trim().length < 20)) {
-          return "Mô tả chi tiết phải từ 20 ký tự trở lên";
-        }
-        if (typeof value === "string" && value.trim().length > 2000) {
-          return "Mô tả không được vượt quá 2000 ký tự";
-        }
+        if (!value || value.trim().length < 20) return "Mô tả phải có ít nhất 20 ký tự.";
+        if (value.trim().length > 2000) return "Mô tả không được quá 2000 ký tự.";
         return null;
-
       case "startPrice":
-        const startPriceNum = Number(value);
-        if (!Number.isFinite(startPriceNum) || startPriceNum < 1000) {
-          return "Giá khởi điểm tối thiểu là 1,000 VND";
-        }
-        if (!Number.isInteger(startPriceNum)) {
-          return "Giá khởi điểm phải là số nguyên";
-        }
+        if (!value || Number(value) < 1000) return "Giá khởi điểm tối thiểu 1.000 VND.";
+        if (Number(value) > 1000000000) return "Giá khởi điểm tối đa 1 tỷ VND.";
         return null;
-
       case "bidStep":
-        const bidStepNum = Number(value);
-        if (!Number.isFinite(bidStepNum) || bidStepNum < 10000) {
-          return "Bước giá tối thiểu là 10,000 VND";
-        }
-        if (!Number.isInteger(bidStepNum)) {
-          return "Bước giá phải là số nguyên";
-        }
-        if (parsedStartPrice > 0 && bidStepNum > parsedStartPrice) {
-          return "Bước giá không nên lớn hơn giá khởi điểm";
-        }
+        if (!value || Number(value) < 10000) return "Bước giá tối thiểu 10.000 VND.";
         return null;
-
       case "duration":
-        const durationNum = Number(value);
-        if (!Number.isFinite(durationNum) || durationNum < 5) {
-          return "Thời gian đấu giá tối thiểu là 5 phút";
-        }
-        if (durationNum > 10080) {
-          return "Thời gian đấu giá tối đa là 7 ngày (10,080 phút)";
-        }
+        if (!value || Number(value) < 5) return "Thời gian tối thiểu 5 phút.";
+        if (Number(value) > 10080) return "Thời gian tối đa 7 ngày.";
         return null;
-
       default:
         return null;
     }
   };
 
-  // Field change handlers with validation
+  const validateAll = () => {
+    const errors = {
+      title: validateField("title", title),
+      category: validateField("category", category),
+      condition: validateField("condition", condition),
+      description: validateField("description", description),
+      startPrice: validateField("startPrice", startPrice),
+      bidStep: validateField("bidStep", bidStep),
+      duration: validateField("duration", duration),
+    };
+    setTitleError(errors.title);
+    setCategoryError(errors.category);
+    setConditionError(errors.condition);
+    setDescriptionError(errors.description);
+    setStartPriceError(errors.startPrice);
+    setBidStepError(errors.bidStep);
+    setDurationError(errors.duration);
+    return !Object.values(errors).some(Boolean);
+  };
+
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setTitle(value);
-    setTitleError(validateField("title", value));
+    const v = e.target.value;
+    setTitle(v);
+    if (titleError) setTitleError(validateField("title", v));
   };
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setCategory(e.target.value);
-    setCategoryError(validateField("category", e.target.value));
+    const v = e.target.value;
+    setCategory(v);
+    if (categoryError) setCategoryError(validateField("category", v));
   };
 
   const handleConditionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setCondition(e.target.value);
-    setConditionError(validateField("condition", e.target.value));
+    const v = e.target.value;
+    setCondition(v);
+    if (conditionError) setConditionError(validateField("condition", v));
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setDescription(value);
-    setDescriptionError(validateField("description", value));
+    const v = e.target.value;
+    setDescription(v);
+    if (descriptionError) setDescriptionError(validateField("description", v));
   };
 
   const handleStartPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^\d]/g, "");
-    setStartPrice(value);
-    setStartPriceError(validateField("startPrice", value));
+    const raw = e.target.value.replace(/\D/g, "");
+    setStartPrice(raw);
+    if (startPriceError) setStartPriceError(validateField("startPrice", raw));
   };
 
   const handleBidStepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^\d]/g, "");
-    setBidStep(value);
-    setBidStepError(validateField("bidStep", value));
+    const raw = e.target.value.replace(/\D/g, "");
+    setBidStep(raw);
+    if (bidStepError) setBidStepError(validateField("bidStep", raw));
   };
 
   const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^\d]/g, "");
-    setDuration(value);
-    setDurationError(validateField("duration", value));
+    const v = e.target.value;
+    setDuration(v);
+    if (durationError) setDurationError(validateField("duration", v));
   };
 
   const handleImageChange = (index: number, value: string) => {
-    const newUrls = [...imageUrls];
-    newUrls[index] = value;
-    setImageUrls(newUrls);
+    const updated = [...imageUrls];
+    updated[index] = value;
+    setImageUrls(updated);
+    if (imageError) setImageError(null);
   };
 
   const addImageField = () => {
@@ -276,164 +244,105 @@ export function NewAuctionClient() {
 
   const removeImageField = (index: number) => {
     if (imageUrls.length > 1) {
-      const newUrls = [...imageUrls];
-      newUrls.splice(index, 1);
-      setImageUrls(newUrls);
+      setImageUrls(imageUrls.filter((_, i) => i !== index));
     }
   };
 
-  // Check if form is valid
-  const isFormValid =
-    !titleError &&
-    !categoryError &&
-    !conditionError &&
-    !descriptionError &&
-    !startPriceError &&
-    !bidStepError &&
-    !durationError &&
-    title.trim().length >= 5 &&
-    category.trim() !== "" &&
-    condition.trim() !== "" &&
-    description.trim().length >= 20 &&
-    parsedStartPrice >= 1000 &&
-    parsedBidStep >= 10000 &&
-    parsedBidStep <= parsedStartPrice &&
-    parsedDuration >= 5 &&
-    parsedDuration <= 10080 &&
-    imageUrls.length <= 5;
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-
-    if (!isFormValid) {
-      setError("Vui lòng kiểm tra lại thông tin form");
-      return;
-    }
-
-    if (!termsAccepted) {
-      setError("Bạn cần đồng ý với các điều khoản trước khi tạo phiên đấu giá");
-      return;
-    }
-
-    setConfirmOpen(true);
+  const isValidImageUrl = (url: string) => {
+    return url && /^https?:\/\/.+\.(jpe?g|png|webp|gif|bmp)(\?.*)?$/i.test(url.trim());
   };
+
+  const isFormValid = !Object.values({
+    title: validateField("title", title),
+    category: validateField("category", category),
+    condition: validateField("condition", condition),
+    description: validateField("description", description),
+    startPrice: validateField("startPrice", startPrice),
+    bidStep: validateField("bidStep", bidStep),
+    duration: validateField("duration", duration),
+  }).some(Boolean);
 
   const confirmSubmit = async () => {
-    setConfirmOpen(false);
-
-    if (!isOnline) {
-      setError("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
-      return;
-    }
-
     setSubmitting(true);
     setError(null);
-
     try {
-      const imageList = imageUrls.filter((url) => url.trim() !== "");
-
       const result = await createAuction({
         title: title.trim(),
-        category: category.trim(),
-        condition: condition.trim(),
         description: description.trim(),
+        category,
+        condition,
+        images: imageUrls.filter((u) => u.trim()),
         startPrice: parsedStartPrice,
         bidStep: parsedBidStep,
         duration: parsedDuration,
-        images: imageList,
         autoExtensionEnabled: true,
         maxExtensions: 3,
       });
-
       if (result.success) {
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          // Ignore localStorage errors
-        }
-        setSuccessMessage("Tạo phiên đấu giá thành công! Chuyển hướng đến phiên đấu giá...");
+        setSuccessMessage("Phiên đấu giá đã được tạo thành công!");
+        localStorage.removeItem(STORAGE_KEY);
         setTimeout(() => {
           router.push(`/auctions/${result.data.auctionId}`);
-          router.refresh();
-        }, 1500);
-        return;
+        }, 1000);
+      } else {
+        setError(result.message || "Không thể tạo phiên đấu giá. Vui lòng thử lại.");
       }
-
-      setError(result.error || "Có lỗi xảy ra khi tạo phiên đấu giá");
-    } catch {
-      setError("Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.");
+    } catch (err) {
+      setError("Đã xảy ra lỗi. Vui lòng thử lại sau.");
     } finally {
       setSubmitting(false);
+      setConfirmOpen(false);
     }
   };
-
-  // Helper to check if URL is valid image URL
-  const isValidImageUrl = (url: string) => {
-    try {
-      const u = new URL(url);
-      return u.protocol === "http:" || u.protocol === "https:";
-    } catch {
-      return false;
-    }
-  };
-
-  if (isAuthenticated === null) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="container mx-auto max-w-3xl px-4 py-12 text-center">
-        <Alert className="mx-auto max-w-md bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
-          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-          <AlertDescription className="text-amber-800 dark:text-amber-300">
-            Bạn cần đăng nhập để tạo phiên đấu giá.
-          </AlertDescription>
-        </Alert>
-        <div className="mt-6 flex justify-center gap-4">
-          <Button asChild>
-            <a href="/auth/login?redirect=/auctions/new">Đăng nhập</a>
-          </Button>
-          <Button asChild variant="outline">
-            <a href="/auth/register?redirect=/auctions/new">Đăng ký</a>
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="container mx-auto max-w-7xl px-4 py-6 sm:py-8">
-      {/* Header */}
-      <div className="mb-8 flex flex-col gap-2 sm:mb-10">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tạo phiên đấu giá mới</h1>
-              <Badge variant="secondary" className="hidden sm:inline-flex">
-                MVP
-              </Badge>
+    <div className="min-h-screen relative">
+      {/* Background gradients */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-emerald-500/8 rounded-full blur-[100px]" />
+      </div>
+
+      {/* Page Header */}
+      <div className="relative mb-8">
+        <div className="bg-gradient-to-br from-neutral-900 via-zinc-900 to-black rounded-2xl border border-white/5 p-6 md:p-8 overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-[80px]" />
+          <div className="relative">
+            <Button
+              type="button"
+              variant="ghost"
+              asChild
+              className="mb-4 text-white/60 hover:text-white hover:bg-white/5"
+            >
+              <a href="/auctions" className="flex items-center gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                Quay lại danh sách
+              </a>
+            </Button>
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
+                  <span className="bg-gradient-to-r from-amber-200 via-amber-400 to-orange-400 bg-clip-text text-transparent">
+                    Tạo phiên đấu giá
+                  </span>
+                </h1>
+                <p className="text-neutral-400 mt-2 max-w-xl">
+                  Điền thông tin sản phẩm và thiết lập phiên đấu giá chuyên nghiệp. 
+                  Sản phẩm của bạn sẽ tiếp cận hàng nghìn người mua tiềm năng.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-neutral-500 bg-white/5 rounded-full px-4 py-2 border border-white/5">
+                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                <span>Miễn phí đăng phiên</span>
+              </div>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground sm:mt-2">
-              Đăng sản phẩm của bạn và bắt đầu nhận giá thầu từ người mua.
-            </p>
           </div>
-          <Button variant="outline" asChild className="sm:hidden">
-            <a href="/auctions">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Danh sách đấu giá
-            </a>
-          </Button>
         </div>
       </div>
 
       {!isOnline && (
-        <Alert className="mb-6 border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        <Alert className="mb-6 border-amber-500/30 bg-amber-500/10 text-amber-200">
           <WifiOff className="h-5 w-5" />
           <AlertDescription>
             Mất kết nối. Dữ liệu form đang được giữ trên trình duyệt. Khi có mạng trở lại, vui lòng tự bấm submit lại.
@@ -441,21 +350,25 @@ export function NewAuctionClient() {
         </Alert>
       )}
 
-      {/* Main content - 2 columns on desktop */}
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Left column - Form */}
         <div className="lg:col-span-7 space-y-6">
           {/* Product Info Section */}
-          <Card>
-            <CardHeader className="border-b bg-muted/30">
-              <CardTitle className="text-lg">Thông tin sản phẩm</CardTitle>
-              <CardDescription>Nhập thông tin chi tiết về sản phẩm bạn muốn đấu giá.</CardDescription>
+          <Card className="bg-white/5 border-white/10 backdrop-blur-xl shadow-xl">
+            <CardHeader className="border-b border-white/5">
+              <CardTitle className="text-lg text-white flex items-center gap-2">
+                <Tag className="h-4 w-4 text-amber-400" />
+                Thông tin sản phẩm
+              </CardTitle>
+              <CardDescription className="text-neutral-400">
+                Nhập thông tin chi tiết về sản phẩm bạn muốn đấu giá.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="title">Tên sản phẩm *</Label>
-                  <span className="text-xs text-muted-foreground">{title.length}/100</span>
+                  <Label htmlFor="title" className="text-neutral-200">Tên sản phẩm *</Label>
+                  <span className="text-xs text-neutral-500">{title.length}/100</span>
                 </div>
                 <Input
                   id="title"
@@ -464,80 +377,80 @@ export function NewAuctionClient() {
                   onChange={handleTitleChange}
                   placeholder="VD: Đồng hồ Rolex Submariner - Mới 99%"
                   maxLength={100}
-                  className={`w-full ${titleError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  className={`w-full bg-white/5 border-white/10 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20 ${titleError ? "border-red-500/50 focus-visible:ring-red-500/30" : ""}`}
                 />
                 {titleError && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
+                  <p className="text-xs text-red-400 flex items-center gap-1">
                     <AlertCircle className="h-3 w-3" /> {titleError}
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-neutral-500">
                   Từ 5 đến 100 ký tự. Tốt nhất nên có thương hiệu + model + tình trạng.
                 </p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="category">Danh mục *</Label>
+                  <Label htmlFor="category" className="text-neutral-200">Danh mục *</Label>
                   <div className="relative">
                     <select
                       id="category"
                       name="category"
                       value={category}
                       onChange={handleCategoryChange}
-                      className={`h-9 w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] ${
-                        categoryError ? "border-red-500 focus-visible:ring-red-500" : "border-input"
+                      className={`h-9 w-full rounded-md border bg-white/5 text-white px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-amber-500/50 focus-visible:ring-amber-500/20 ${
+                        categoryError ? "border-red-500/50" : "border-white/10"
                       }`}
                     >
-                      <option value="">Chọn danh mục</option>
+                      <option value="" className="bg-zinc-900">Chọn danh mục</option>
                       {CATEGORY_OPTIONS.map((cat) => (
-                        <option key={cat.value} value={cat.value}>
+                        <option key={cat.value} value={cat.value} className="bg-zinc-900">
                           {cat.label}
                         </option>
                       ))}
                     </select>
-                    <ChevronRight className="absolute right-3 top-2.5 h-4 w-4 rotate-90 text-muted-foreground pointer-events-none" />
+                    <ChevronRight className="absolute right-3 top-2.5 h-4 w-4 rotate-90 text-neutral-500 pointer-events-none" />
                   </div>
                   {categoryError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
+                    <p className="text-xs text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" /> {categoryError}
                     </p>
                   )}
                   {category && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-neutral-500">
                       {CATEGORY_OPTIONS.find((c) => c.value === category)?.description}
                     </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="condition">Tình trạng *</Label>
+                  <Label htmlFor="condition" className="text-neutral-200">Tình trạng *</Label>
                   <div className="relative">
                     <select
                       id="condition"
                       name="condition"
                       value={condition}
                       onChange={handleConditionChange}
-                      className={`h-9 w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] ${
-                        conditionError ? "border-red-500 focus-visible:ring-red-500" : "border-input"
+                      className={`h-9 w-full rounded-md border bg-white/5 text-white px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-amber-500/50 focus-visible:ring-amber-500/20 ${
+                        conditionError ? "border-red-500/50" : "border-white/10"
                       }`}
                     >
-                      <option value="">Chọn tình trạng</option>
+                      <option value="" className="bg-zinc-900">Chọn tình trạng</option>
                       {CONDITION_OPTIONS.map((cond) => (
-                        <option key={cond.value} value={cond.value}>
+                        <option key={cond.value} value={cond.value} className="bg-zinc-900">
                           {cond.label}
                         </option>
                       ))}
                     </select>
-                    <ChevronRight className="absolute right-3 top-2.5 h-4 w-4 rotate-90 text-muted-foreground pointer-events-none" />
+                    <ChevronRight className="absolute right-3 top-2.5 h-4 w-4 rotate-90 text-neutral-500 pointer-events-none" />
                   </div>
                   {conditionError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
+                    <p className="text-xs text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" /> {conditionError}
                     </p>
                   )}
                   {condition && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-neutral-500">
                       {CONDITION_OPTIONS.find((c) => c.value === condition)?.description}
                     </p>
                   )}
@@ -546,8 +459,8 @@ export function NewAuctionClient() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="description">Mô tả chi tiết *</Label>
-                  <span className="text-xs text-muted-foreground">{description.length}/2000</span>
+                  <Label htmlFor="description" className="text-neutral-200">Mô tả chi tiết *</Label>
+                  <span className="text-xs text-neutral-500">{description.length}/2000</span>
                 </div>
                 <div className="relative">
                   <Textarea
@@ -556,21 +469,21 @@ export function NewAuctionClient() {
                     value={description}
                     onChange={handleDescriptionChange}
                     placeholder={`Ví dụ:\n- Nguồn gốc sản phẩm:\n- Tình trạng hiện tại:\n- Phụ kiện đi kèm:\n- Chính sách giao nhận:\n- Lưu ý cho người mua:`}
-                    className={`min-h-32 resize-y ${descriptionError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                    className={`min-h-32 resize-y bg-white/5 border-white/10 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20 ${descriptionError ? "border-red-500/50 focus-visible:ring-red-500/30" : ""}`}
                     maxLength={2000}
                   />
                   <div className="absolute bottom-3 right-3 flex gap-2">
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="text-xs border-white/10 text-neutral-400">
                       Gợi ý: Viết chi tiết để thu hút người mua
                     </Badge>
                   </div>
                 </div>
                 {descriptionError && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
+                  <p className="text-xs text-red-400 flex items-center gap-1">
                     <AlertCircle className="h-3 w-3" /> {descriptionError}
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-neutral-500">
                   Tối thiểu 20 ký tự. Mô tả chi tiết giúp tăng độ tin cậy và thu hút người mua.
                 </p>
               </div>
@@ -578,13 +491,13 @@ export function NewAuctionClient() {
           </Card>
 
           {/* Images Section */}
-          <Card>
-            <CardHeader className="border-b bg-muted/30">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <ImageIcon className="h-4 w-4" />
+          <Card className="bg-white/5 border-white/10 backdrop-blur-xl shadow-xl">
+            <CardHeader className="border-b border-white/5">
+              <CardTitle className="text-lg text-white flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-amber-400" />
                 Hình ảnh sản phẩm
               </CardTitle>
-              <CardDescription>Tối đa 5 ảnh. Ảnh đầu tiên sẽ là thumbnail.</CardDescription>
+              <CardDescription className="text-neutral-400">Tối đa 5 ảnh. Ảnh đầu tiên sẽ là thumbnail.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -598,25 +511,25 @@ export function NewAuctionClient() {
                         onChange={(e) => handleImageChange(index, e.target.value)}
                         type="url"
                         placeholder={`https://example.com/image${index + 1}.jpg`}
-                        className="w-full"
+                        className="w-full bg-white/5 border-white/10 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
                       />
                       {url && isValidImageUrl(url) && (
                         <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                          <div className="h-8 w-8 rounded bg-muted flex items-center justify-center overflow-hidden">
+                          <div className="h-8 w-8 rounded bg-white/10 flex items-center justify-center overflow-hidden border border-white/10">
                             <img src={url} alt={`Preview ${index}`} className="h-full w-full object-cover" onError={(e) => (e.currentTarget.style.display = "none")} />
                           </div>
                         </div>
                       )}
                     </div>
                     {imageUrls.length > 1 && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeImageField(index)} className="h-9 w-9 p-0">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeImageField(index)} className="h-9 w-9 p-0 text-neutral-400 hover:text-white hover:bg-white/10">
                         <X className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
                 ))}
                 {imageUrls.length < 5 && (
-                  <Button type="button" variant="outline" size="sm" onClick={addImageField} className="w-full">
+                  <Button type="button" variant="outline" size="sm" onClick={addImageField} className="w-full border-white/10 text-neutral-300 hover:text-white hover:bg-white/10 hover:border-white/20">
                     <ImageIcon className="mr-2 h-4 w-4" />
                     Thêm ảnh
                   </Button>
@@ -625,31 +538,31 @@ export function NewAuctionClient() {
               <div className="flex flex-wrap gap-2">
                 {imageUrls.map((url, index) =>
                   url && isValidImageUrl(url) ? (
-                    <Badge key={index} variant="secondary" className="text-xs">
+                    <Badge key={index} variant="secondary" className="text-xs bg-white/5 text-neutral-300 border-white/10">
                       Ảnh {index + 1}
                     </Badge>
                   ) : null
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-neutral-500">
                 Hỗ trợ URL ảnh từ JPEG, PNG, WebP. Ảnh đầu tiên sẽ làm thumbnail.
               </p>
             </CardContent>
           </Card>
 
           {/* Pricing Section */}
-          <Card>
-            <CardHeader className="border-b bg-muted/30">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <span className="text-emerald-600">💰</span>
+          <Card className="bg-white/5 border-white/10 backdrop-blur-xl shadow-xl">
+            <CardHeader className="border-b border-white/5">
+              <CardTitle className="text-lg text-white flex items-center gap-2">
+                <span className="text-emerald-400">💰</span>
                 Cài đặt giá
               </CardTitle>
-              <CardDescription>Giá khởi điểm và bước giá tối thiểu.</CardDescription>
+              <CardDescription className="text-neutral-400">Giá khởi điểm và bước giá tối thiểu.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="startPrice">Giá khởi điểm (VND) *</Label>
+                  <Label htmlFor="startPrice" className="text-neutral-200">Giá khởi điểm (VND) *</Label>
                   <div className="relative">
                     <Input
                       id="startPrice"
@@ -660,22 +573,22 @@ export function NewAuctionClient() {
                       placeholder="1000000"
                       min={1000}
                       step={1000}
-                      className={`pl-12 ${startPriceError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                      className={`pl-12 bg-white/5 border-white/10 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20 ${startPriceError ? "border-red-500/50 focus-visible:ring-red-500/30" : ""}`}
                     />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₫</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">₫</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-neutral-500">
                     {parsedStartPrice > 0 ? formatCurrency(parsedStartPrice) : "Ví dụ: 1.000.000 VND"}
                   </p>
                   {startPriceError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
+                    <p className="text-xs text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" /> {startPriceError}
                     </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="bidStep">Bước giá tối thiểu (VND) *</Label>
+                  <Label htmlFor="bidStep" className="text-neutral-200">Bước giá tối thiểu (VND) *</Label>
                   <div className="relative">
                     <Input
                       id="bidStep"
@@ -686,15 +599,15 @@ export function NewAuctionClient() {
                       placeholder="10000"
                       min={10000}
                       step={1000}
-                      className={`pl-12 ${bidStepError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                      className={`pl-12 bg-white/5 border-white/10 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20 ${bidStepError ? "border-red-500/50 focus-visible:ring-red-500/30" : ""}`}
                     />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₫</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">₫</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-neutral-500">
                     {parsedBidStep > 0 ? formatCurrency(parsedBidStep) : "Ví dụ: 10.000 VND"}
                   </p>
                   {bidStepError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
+                    <p className="text-xs text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" /> {bidStepError}
                     </p>
                   )}
@@ -704,13 +617,13 @@ export function NewAuctionClient() {
           </Card>
 
           {/* Duration Section */}
-          <Card>
-            <CardHeader className="border-b bg-muted/30">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Clock className="h-4 w-4" />
+          <Card className="bg-white/5 border-white/10 backdrop-blur-xl shadow-xl">
+            <CardHeader className="border-b border-white/5">
+              <CardTitle className="text-lg text-white flex items-center gap-2">
+                <Clock className="h-4 w-4 text-amber-400" />
                 Thời gian đấu giá
               </CardTitle>
-              <CardDescription>Chọn thời gian cho phiên đấu giá của bạn.</CardDescription>
+              <CardDescription className="text-neutral-400">Chọn thời gian cho phiên đấu giá của bạn.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
@@ -724,8 +637,8 @@ export function NewAuctionClient() {
                     }}
                     className={`flex flex-col items-center justify-center rounded-md border px-3 py-2 text-sm transition-all ${
                       duration === String(opt.value)
-                        ? "border-ring bg-ring/10 text-ring"
-                        : "border-input hover:bg-accent hover:text-accent-foreground"
+                        ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                        : "border-white/10 text-neutral-400 hover:bg-white/5 hover:text-white"
                     }`}
                   >
                     <span>{opt.label}</span>
@@ -734,7 +647,7 @@ export function NewAuctionClient() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="duration">Tùy chỉnh (phút)</Label>
+                <Label htmlFor="duration" className="text-neutral-200">Tùy chỉnh (phút)</Label>
                 <div className="relative">
                   <Input
                     id="duration"
@@ -744,25 +657,25 @@ export function NewAuctionClient() {
                     onChange={handleDurationChange}
                     min={5}
                     max={10080}
-                    className="pl-12"
+                    className="pl-12 bg-white/5 border-white/10 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
                   />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">min</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">min</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-neutral-500">
                   {parsedDuration > 0 && parsedDuration >= 5 && parsedDuration <= 10080
                     ? `Thời gian: ${Math.floor(parsedDuration / 60)}h ${parsedDuration % 60}p (${parsedDuration} phút)`
                     : "Tối thiểu 5 phút, tối đa 7 ngày (10,080 phút)"}
                 </p>
               </div>
 
-              <div className="rounded-md bg-blue-50 p-3 dark:bg-blue-900/20 flex items-start gap-2">
-                <Calendar className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-blue-700 dark:text-blue-300">
+              <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-3 flex items-start gap-2">
+                <Calendar className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-amber-200">
                   <strong>Dự kiến kết thúc:</strong> {estimatedEnd.toLocaleString("vi-VN")}
                 </div>
               </div>
               {durationError && (
-                <p className="text-xs text-red-500 flex items-center gap-1">
+                <p className="text-xs text-red-400 flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" /> {durationError}
                 </p>
               )}
@@ -770,29 +683,28 @@ export function NewAuctionClient() {
           </Card>
 
           {/* Terms and Submit */}
-          <Card>
+          <Card className="bg-white/5 border-white/10 backdrop-blur-xl shadow-xl">
             <CardContent className="space-y-4 pt-6">
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-3">
                 <input
                   id="terms"
                   type="checkbox"
                   checked={termsAccepted}
                   onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500/30"
                 />
                 <div className="space-y-1">
-                  <label htmlFor="terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  <label htmlFor="terms" className="text-sm font-medium text-neutral-200 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                     Tôi xác nhận thông tin sản phẩm là chính xác và đồng ý không chỉnh sửa sau khi có người đặt giá.
                   </label>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-neutral-500">
                     Lưu ý: Sau khi phiên đấu giá có bid, bạn không nên thay đổi thông tin sản phẩm để đảm bảo tính minh bạch.
                   </p>
                 </div>
               </div>
 
-              {/* Error display */}
               {error && (
-                <Alert variant="destructive" className="bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800">
+                <Alert variant="destructive" className="bg-red-500/10 border-red-500/30 text-red-200">
                   <AlertCircle className="h-5 w-5" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
@@ -803,7 +715,7 @@ export function NewAuctionClient() {
                   type="button"
                   variant="outline"
                   asChild
-                  className="flex-1"
+                  className="flex-1 border-white/10 text-neutral-300 hover:text-white hover:bg-white/10 hover:border-white/20"
                 >
                   <a href="/auctions">
                     Hủy
@@ -828,9 +740,17 @@ export function NewAuctionClient() {
                     setConfirmOpen(true);
                   }}
                   disabled={!isFormValid || submitting || !termsAccepted || !isOnline}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 disabled:opacity-50 disabled:shadow-none"
                 >
-                  {submitting ? "Đang tạo..." : "Tạo phiên đấu giá"}
+                  {submitting ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Đang tạo...
+                    </span>
+                  ) : "Tạo phiên đấu giá"}
                 </Button>
               </div>
             </CardContent>
@@ -840,127 +760,166 @@ export function NewAuctionClient() {
         {/* Right column - Preview */}
         <div className="lg:col-span-5 space-y-6">
           <div className="sticky top-6">
-            <Card className="overflow-hidden border-2 border-primary/20 bg-gradient-to-br from-background to-primary/5">
-              <div className="bg-primary text-primary-foreground p-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Preview Phiên Đấu Giá</h2>
-                  <Badge variant="secondary" className="bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 text-xs">
-                    Dựng trước
+            {/* Preview Card */}
+            <div className="bg-gradient-to-br from-zinc-900 via-zinc-800/90 to-black rounded-2xl border border-white/10 overflow-hidden shadow-2xl shadow-black/40">
+              {/* Preview Header */}
+              <div className="bg-gradient-to-r from-zinc-800 to-zinc-900 border-b border-white/5 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-lg font-semibold text-white">Preview</h2>
+                  <Badge variant="outline" className="border-amber-500/30 text-amber-300 bg-amber-500/5 text-xs">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Live Preview
                   </Badge>
                 </div>
-                <p className="text-xs text-primary-foreground/80 mt-1">
+                <p className="text-xs text-neutral-500">
                   Sản phẩm của bạn sẽ hiển thị như này sau khi tạo.
                 </p>
               </div>
 
               <div className="p-4 space-y-4">
                 {/* Image Preview */}
-                <div className="aspect-square w-full rounded-lg bg-muted overflow-hidden flex items-center justify-center border-2 border-dashed border-muted-foreground/20">
+                <div className="aspect-[4/3] w-full rounded-xl bg-gradient-to-br from-zinc-800 to-neutral-900 overflow-hidden flex items-center justify-center border border-white/5">
                   {imageUrls[0] && isValidImageUrl(imageUrls[0]) ? (
                     <img src={imageUrls[0]} alt={title || "Sản phẩm"} className="h-full w-full object-cover" />
                   ) : (
                     <div className="text-center p-4">
-                      <ImageIcon className="mx-auto h-12 w-12 text-muted-foreground/50 mb-2" />
-                      <p className="text-xs text-muted-foreground">Ảnh preview sẽ hiển thị ở đây</p>
+                      <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-white/5 flex items-center justify-center">
+                        <ImageIcon className="h-8 w-8 text-neutral-600" />
+                      </div>
+                      <p className="text-sm text-neutral-500">Ảnh preview</p>
+                      <p className="text-xs text-neutral-600 mt-1">Thêm URL ảnh để xem trước</p>
+                    </div>
+                  )}
+                  {/* Status badge overlay */}
+                  <div className="absolute top-6 left-6">
+                    <Badge className="bg-emerald-500/90 text-white border-none text-xs shadow-lg shadow-emerald-500/20">
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        Sẽ mở ngay khi tạo
+                      </span>
+                    </Badge>
+                  </div>
+                  {/* Image count badge */}
+                  {imageUrls.filter(u => u.trim()).length > 0 && (
+                    <div className="absolute top-6 right-6">
+                      <Badge variant="outline" className="border-white/20 bg-black/50 text-white text-xs backdrop-blur-sm">
+                        <ImageIcon className="h-3 w-3 mr-1" />
+                        {imageUrls.filter((u) => u.trim()).length}
+                      </Badge>
                     </div>
                   )}
                 </div>
 
                 {/* Product Info */}
                 <div className="space-y-3">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap gap-2">
-                      {category && <Badge variant="outline" className="text-xs">{category}</Badge>}
-                      {condition && <Badge variant="secondary" className="text-xs">{condition}</Badge>}
-                    </div>
-                    <h3 className="font-semibold text-lg line-clamp-2" title={title}>
-                      {title || <span className="text-muted-foreground italic">Tên sản phẩm sẽ hiển thị ở đây...</span>}
-                    </h3>
+                  {/* Category & Condition badges */}
+                  <div className="flex flex-wrap gap-2">
+                    {category && (
+                      <Badge className="bg-white/5 text-neutral-300 border-white/10 text-xs">
+                        {category}
+                      </Badge>
+                    )}
+                    {condition && (
+                      <Badge className="bg-white/5 text-neutral-300 border-white/10 text-xs">
+                        {condition}
+                      </Badge>
+                    )}
+                    {!category && !condition && (
+                      <span className="text-xs text-neutral-600 italic">Chọn danh mục và tình trạng</span>
+                    )}
                   </div>
 
+                  <h3 className="font-semibold text-xl text-white line-clamp-2" title={title}>
+                    {title || <span className="text-neutral-600 italic">Tên sản phẩm sẽ hiển thị ở đây...</span>}
+                  </h3>
+
+                  {/* Price display */}
                   <div className="space-y-2">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold text-emerald-600">
+                      <span className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-orange-400">
                         {parsedStartPrice > 0 ? formatCurrency(parsedStartPrice) : "0 ₫"}
                       </span>
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm text-neutral-500">
                         ({formatNumberWithCommas(parsedStartPrice)} VND)
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Clock className="h-3 w-3" />
+
+                    <div className="flex items-center gap-2 text-sm text-neutral-400">
+                      <ArrowLeft className="h-3.5 w-3.5 rotate-45" />
                       <span>
-                        Bước giá: <span className="font-medium text-foreground">{parsedBidStep > 0 ? formatCurrency(parsedBidStep) : "10.000 ₫"}</span>
+                        Bước giá: <span className="font-medium text-white">{parsedBidStep > 0 ? formatCurrency(parsedBidStep) : "10.000 ₫"}</span>
                       </span>
                     </div>
                   </div>
 
-                  {/* Duration info */}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-2">
-                    <Calendar className="h-3 w-3" />
+                  {/* Duration */}
+                  <div className="flex items-center gap-2 text-sm text-neutral-400 bg-white/5 rounded-lg p-3 border border-white/5">
+                    <Calendar className="h-4 w-4 text-amber-400" />
                     <span>
                       {parsedDuration >= 5 && parsedDuration <= 10080
                         ? `Kết thúc sau: ${Math.floor(parsedDuration / 60)}h ${parsedDuration % 60}p`
                         : "Thời gian chưa hợp lệ"}
                     </span>
+                    <span className="ml-auto text-xs text-neutral-600">
+                      {estimatedEnd.toLocaleDateString("vi-VN")}
+                    </span>
                   </div>
 
-                  {/* Status badge */}
+                  {/* Status */}
                   <div className="flex items-center gap-2">
-                    <Badge variant="default" className="bg-gradient-to-r from-emerald-500 to-emerald-600">
-                      Sẽ mở ngay khi tạo
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      Status: ACTIVE
+                    <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-xs">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      ACTIVE — Sẵn sàng đấu giá
                     </Badge>
                   </div>
 
                   {/* Description preview */}
                   {description && (
-                    <div className="pt-2 border-t">
-                      <p className="text-sm text-muted-foreground line-clamp-3">{description}</p>
+                    <div className="pt-3 border-t border-white/5">
+                      <p className="text-sm text-neutral-400 line-clamp-3 leading-relaxed">{description}</p>
                     </div>
                   )}
 
                   {/* Quick stats */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t">
-                    <div className="text-center">
-                      <div className="text-xs text-muted-foreground">Số ảnh</div>
-                      <div className="font-semibold">{imageUrls.filter((u) => u.trim()).length}</div>
+                  <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/5">
+                    <div className="text-center p-2 rounded-lg bg-white/5">
+                      <div className="text-lg font-bold text-white">{imageUrls.filter((u) => u.trim()).length}</div>
+                      <div className="text-xs text-neutral-500">Số ảnh</div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-xs text-muted-foreground">Bước giá</div>
-                      <div className="font-semibold">{parsedBidStep > 0 ? formatCurrency(parsedBidStep) : "-"}</div>
+                    <div className="text-center p-2 rounded-lg bg-white/5">
+                      <div className="text-lg font-bold text-white">{parsedBidStep > 0 ? formatCurrency(parsedBidStep).replace("₫", "").trim() : "-"}</div>
+                      <div className="text-xs text-neutral-500">Bước giá</div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-xs text-muted-foreground">Thời gian</div>
-                      <div className="font-semibold">{parsedDuration > 0 ? `${parsedDuration}p` : "-"}</div>
+                    <div className="text-center p-2 rounded-lg bg-white/5">
+                      <div className="text-lg font-bold text-white">{parsedDuration > 0 ? `${parsedDuration}p` : "-"}</div>
+                      <div className="text-xs text-neutral-500">Thời gian</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-amber-50/50 border border-amber-200/50 rounded-md p-3">
+                {/* Warning note */}
+                <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3">
                   <div className="flex items-start gap-2">
-                    <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <Shield className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-200/80">
                       <strong>Lưu ý:</strong> Sau khi phiên đấu giá có bid, bạn không nên thay đổi thông tin sản phẩm để đảm bảo tính minh bạch.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <CardFooter className="justify-between border-t bg-muted/30">
-                <div className="text-xs text-muted-foreground">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-white/5 bg-white/5">
+                <div className="text-xs text-neutral-500">
                   Preview cập nhật realtime
                 </div>
-                <CheckCircle className="h-4 w-4 text-emerald-600" />
-              </CardFooter>
-            </Card>
+                <CheckCircle className="h-4 w-4 text-emerald-400" />
+              </div>
+            </div>
 
             {successMessage && (
-              <Alert className="mt-4 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800">
-                <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                <AlertDescription className="text-emerald-800 dark:text-emerald-300">
+              <Alert className="mt-4 bg-emerald-500/10 border-emerald-500/30">
+                <CheckCircle className="h-5 w-5 text-emerald-400" />
+                <AlertDescription className="text-emerald-200">
                   {successMessage}
                 </AlertDescription>
               </Alert>
@@ -970,49 +929,49 @@ export function NewAuctionClient() {
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+        <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader>
-            <DialogTitle>Xác nhận tạo phiên đấu giá</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-xl text-white">Xác nhận tạo phiên đấu giá</DialogTitle>
+            <DialogDescription className="text-neutral-400">
               Vui lòng kiểm tra lại thông tin trước khi đăng bán trên AutoBid.vn.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 rounded-lg border bg-muted/30 p-4 text-sm">
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4 text-sm">
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Tên sản phẩm</span>
-              <span className="font-medium text-right">{title}</span>
+              <span className="text-neutral-400">Tên sản phẩm</span>
+              <span className="font-medium text-white text-right">{title}</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Giá khởi điểm</span>
-              <span className="font-medium">{formatCurrency(parsedStartPrice)}</span>
+              <span className="text-neutral-400">Giá khởi điểm</span>
+              <span className="font-medium text-amber-300">{formatCurrency(parsedStartPrice)}</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Bước giá</span>
-              <span className="font-medium">{formatCurrency(parsedBidStep)}</span>
+              <span className="text-neutral-400">Bước giá</span>
+              <span className="font-medium text-white">{formatCurrency(parsedBidStep)}</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Thời gian đấu giá</span>
-              <span className="font-medium">{parsedDuration} phút</span>
+              <span className="text-neutral-400">Thời gian đấu giá</span>
+              <span className="font-medium text-white">{parsedDuration} phút</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Số ảnh</span>
-              <span className="font-medium">{imageUrls.filter((url) => url.trim()).length}</span>
+              <span className="text-neutral-400">Số ảnh</span>
+              <span className="font-medium text-white">{imageUrls.filter((url) => url.trim()).length}</span>
             </div>
           </div>
 
-          <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
-            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            <AlertDescription className="text-amber-800 dark:text-amber-300">
+          <Alert className="bg-amber-500/10 border-amber-500/20">
+            <AlertCircle className="h-5 w-5 text-amber-400" />
+            <AlertDescription className="text-amber-200">
               Sau khi phiên đấu giá có bid, bạn không nên thay đổi thông tin sản phẩm.
             </AlertDescription>
           </Alert>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting} className="border-white/10 text-neutral-300 hover:text-white hover:bg-white/10">
               Kiểm tra lại
             </Button>
-            <Button onClick={confirmSubmit} disabled={submitting || !isOnline} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={confirmSubmit} disabled={submitting || !isOnline} className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:shadow-none">
               {submitting ? "Đang tạo..." : "Xác nhận tạo"}
             </Button>
           </DialogFooter>

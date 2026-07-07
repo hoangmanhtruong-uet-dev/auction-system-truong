@@ -9,15 +9,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
-  Eye,
   Gavel,
   Heart,
   KeyRound,
   LayoutDashboard,
-  Lock,
   LogOut,
   Mail,
-  MapPin,
   Package,
   RefreshCw,
   Settings,
@@ -27,7 +24,6 @@ import {
   TrendingUp,
   Trophy,
   User,
-  WalletCards,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -42,7 +38,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -50,7 +45,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDateTime, formatRemainingTime } from "@/lib/utils";
@@ -85,19 +79,6 @@ const BID_STATUS_LABELS: Record<BidStatus, string> = {
   WON: "Đã thắng",
   LOST: "Đã thua",
   CANCELLED: "Đã hủy",
-};
-
-const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
-  AUCTION_CREATED: "Đấu giá",
-  AUCTION_ACTIVATED: "Đấu giá",
-  AUCTION_ENDING_SOON: "Đấu giá",
-  AUCTION_ENDED: "Đấu giá",
-  BID_PLACED: "Bid",
-  BID_OUTBID: "Bid",
-  BID_WON: "Giao dịch",
-  BID_LOST: "Giao dịch",
-  AUCTION_PAID: "Giao dịch",
-  SYSTEM: "Hệ thống",
 };
 
 type ProfileStats = {
@@ -197,48 +178,6 @@ function getInitials(name: string) {
     .join("");
 }
 
-function getAuctionStatusClassName(status: AuctionStatus) {
-  switch (status) {
-    case "ACTIVE":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
-    case "PENDING":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
-    case "COMPLETED":
-      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
-    case "CANCELLED":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
-  }
-}
-
-function getBidStatusClassName(status: BidStatus) {
-  switch (status) {
-    case "ACTIVE":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
-    case "WON":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
-    case "LOST":
-      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
-    case "CANCELLED":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
-  }
-}
-
-function Badge({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
-    >
-      {children}
-    </span>
-  );
-}
-
 function AuctionThumb({
   src,
   title,
@@ -254,13 +193,13 @@ function AuctionThumb({
       <img
         src={src}
         alt={title}
-        className="h-14 w-14 rounded-xl object-cover ring-1 ring-foreground/10 sm:h-16 sm:w-16"
+        className="h-14 w-14 rounded-xl object-cover ring-1 ring-white/10 sm:h-16 sm:w-16"
       />
     );
   }
 
   return (
-    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 text-blue-600 ring-1 ring-blue-100 dark:from-blue-950/40 dark:to-indigo-950/40 dark:text-blue-300 dark:ring-blue-900/60 sm:h-16 sm:w-16">
+    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-amber-900/30 to-orange-900/30 text-amber-400 ring-1 ring-amber-500/20 sm:h-16 sm:w-16">
       <Icon className="h-6 w-6" />
     </div>
   );
@@ -278,12 +217,12 @@ function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed bg-muted/20 px-4 py-10 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-background ring-1 ring-foreground/10">
-        <Icon className="h-6 w-6 text-muted-foreground" />
+    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center backdrop-blur-sm">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+        <Icon className="h-6 w-6 text-neutral-500" />
       </div>
-      <h3 className="mt-4 text-base font-semibold">{title}</h3>
-      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+      <h3 className="mt-4 text-base font-semibold text-white">{title}</h3>
+      <p className="mx-auto mt-1 max-w-md text-sm text-neutral-400">
         {description}
       </p>
       {action ? <div className="mt-5">{action}</div> : null}
@@ -294,10 +233,69 @@ function EmptyState({
 function LoadingPreview() {
   return (
     <div className="space-y-3">
-      <Skeleton className="h-14 w-full" />
-      <Skeleton className="h-14 w-full" />
-      <Skeleton className="h-14 w-3/4" />
+      <Skeleton className="h-14 w-full bg-white/5" />
+      <Skeleton className="h-14 w-full bg-white/5" />
+      <Skeleton className="h-14 w-3/4 bg-white/5" />
     </div>
+  );
+}
+
+function OverviewList<T>({
+  title,
+  items,
+  emptyIcon,
+  emptyText,
+  render,
+}: {
+  title: string;
+  items: T[];
+  emptyIcon: React.ElementType;
+  emptyText: string;
+  render: (item: T) => React.ReactNode;
+}) {
+  const Icon = emptyIcon;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-white">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <Icon className="h-8 w-8 text-neutral-600" />
+            <p className="text-sm text-neutral-500">{emptyText}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">{items.map(render)}</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AuctionMiniRow({
+  href,
+  imageUrl,
+  title,
+  subtitle,
+}: {
+  href: string;
+  imageUrl: string | null;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
+    >
+      <AuctionThumb src={imageUrl} title={title} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-white">{title}</p>
+        <p className="truncate text-xs text-neutral-400">{subtitle}</p>
+      </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-neutral-600" />
+    </Link>
   );
 }
 
@@ -369,7 +367,6 @@ export function ProfileClient({
 
   function handleSave() {
     setFieldErrors({});
-
     startTransition(async () => {
       const result = await updateProfile({
         fullName,
@@ -378,7 +375,6 @@ export function ProfileClient({
         city,
         bio,
       });
-
       if (result.success) {
         toast.success("Đã cập nhật hồ sơ", {
           description: "Thông tin cá nhân của bạn đã được lưu.",
@@ -391,15 +387,8 @@ export function ProfileClient({
         router.refresh();
         return;
       }
-
       setFieldErrors({ error: result.error });
       toast.error(result.error);
-    });
-  }
-
-  function handlePlaceholderAction(message: string) {
-    toast.info(message, {
-      description: "UI đã sẵn sàng, cần bổ sung API/backend ở bước tiếp theo.",
     });
   }
 
@@ -410,13 +399,11 @@ export function ProfileClient({
         receiveEmailAuction: bidNotifications,
         receiveEmailMarketing: marketingNotifications,
       });
-
       if (result.success) {
         toast.success("Đã lưu cài đặt thông báo");
         router.refresh();
         return;
       }
-
       toast.error(result.error);
     });
   }
@@ -424,13 +411,11 @@ export function ProfileClient({
   function handleMarkAllNotificationsRead() {
     startTransition(async () => {
       const result = await markAllNotificationsRead();
-
       if (result.success) {
         toast.success("Đã đánh dấu tất cả thông báo là đã đọc");
         router.refresh();
         return;
       }
-
       toast.error(result.error);
     });
   }
@@ -438,7 +423,6 @@ export function ProfileClient({
   function handleSendEmailVerification() {
     startTransition(async () => {
       const result = await sendEmailVerification();
-
       if (result.success) {
         toast.success("Đã gửi email xác minh", {
           description: result.data.message,
@@ -446,7 +430,6 @@ export function ProfileClient({
         router.refresh();
         return;
       }
-
       toast.error(result.error);
     });
   }
@@ -455,12 +438,9 @@ export function ProfileClient({
     const confirmed = window.confirm(
       "Bạn chắc chắn muốn xóa tài khoản? Hồ sơ sẽ bị vô hiệu hóa và bạn cần liên hệ quản trị viên để khôi phục."
     );
-
     if (!confirmed) return;
-
     startTransition(async () => {
       const result = await deleteAccount();
-
       if (result.success) {
         await logout();
         toast.success("Tài khoản đã được vô hiệu hóa");
@@ -468,36 +448,36 @@ export function ProfileClient({
         router.refresh();
         return;
       }
-
       toast.error(result.error);
     });
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50/50 via-background to-background">
+    <div className="min-h-screen">
       <div className="container mx-auto max-w-7xl overflow-x-hidden px-4 py-6 sm:py-8 lg:py-10">
+        {/* Header */}
         <div className="mb-6 flex flex-col justify-between gap-4 sm:mb-8 lg:flex-row lg:items-end">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-              <Sparkles className="h-3.5 w-3.5 text-blue-600" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300 backdrop-blur-sm">
+              <Sparkles className="h-3.5 w-3.5" />
               Account Center
             </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
+            <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
               Hồ sơ của tôi
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
+            <p className="mt-2 max-w-2xl text-sm text-neutral-400 sm:text-base">
               Quản lý thông tin cá nhân, bảo mật, hoạt động đấu giá, sản phẩm,
               watchlist và thông báo trong một trung tâm tài khoản thống nhất.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="outline" asChild>
+            <Button variant="outline" className="border-white/10 bg-white/5 text-white hover:bg-white/10" asChild>
               <Link href="/auctions">
                 Khám phá đấu giá
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild>
+            <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500" asChild>
               <Link href="/auctions/new">
                 <Package className="mr-2 h-4 w-4" />
                 Tạo phiên mới
@@ -506,19 +486,21 @@ export function ProfileClient({
           </div>
         </div>
 
-        <Card className="mb-6 border-blue-100 bg-background/95 shadow-sm dark:border-blue-950/50">
-          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 opacity-95" />
-          <CardContent className="relative pt-24">
+        {/* Profile Hero Card */}
+        <Card className="relative mb-6 overflow-hidden border-white/10 bg-white/5 backdrop-blur-xl">
+          {/* Background gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-900/20 via-transparent to-orange-900/10" />
+          <CardContent className="relative pt-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                <div className="relative -mt-12">
-                  <Avatar className="h-28 w-28 border-4 border-background bg-background shadow-xl">
+                <div className="relative">
+                  <Avatar className="h-28 w-28 border-4 border-white/10 bg-white/5 shadow-xl">
                     <AvatarImage src={user.avatarUrl ?? undefined} alt={user.fullName} />
-                    <AvatarFallback className="bg-blue-600 text-2xl font-bold text-white">
+                    <AvatarFallback className="bg-gradient-to-br from-amber-500 to-orange-600 text-2xl font-bold text-white">
                       {getInitials(user.fullName) || <User className="h-8 w-8" />}
                     </AvatarFallback>
                   </Avatar>
-                  <label className="absolute bottom-1 right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-background shadow-lg ring-1 ring-foreground/10 transition hover:scale-105 hover:bg-muted" aria-label="Đổi ảnh đại diện">
+                  <label className="absolute bottom-1 right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-neutral-800 text-white shadow-lg ring-1 ring-white/20 transition hover:scale-105 hover:bg-neutral-700" aria-label="Đổi ảnh đại diện">
                     <Camera className="h-4 w-4" />
                     <input
                       type="file"
@@ -528,24 +510,17 @@ export function ProfileClient({
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-
-                        // Validate file size (max 2MB)
                         if (file.size > 2 * 1024 * 1024) {
                           toast.error("Ảnh phải nhỏ hơn 2MB");
                           if (e.target) e.target.value = "";
                           return;
                         }
-
-                        // Validate file type
                         const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
                         if (!allowedTypes.includes(file.type)) {
                           toast.error("Chỉ chấp nhận ảnh JPG, PNG, GIF hoặc WebP");
                           if (e.target) e.target.value = "";
                           return;
                         }
-
-                        // Convert file to base64 data URL for small avatars
-                        // In production, this would use a proper upload endpoint
                         try {
                           const reader = new FileReader();
                           reader.onload = async (event) => {
@@ -575,18 +550,18 @@ export function ProfileClient({
 
                 <div className="min-w-0 pb-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                    <h2 className="truncate text-2xl font-bold tracking-tight text-white sm:text-3xl">
                       {user.fullName}
                     </h2>
-                    <Badge className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
                       {ROLE_LABELS[user.role]}
-                    </Badge>
-                    <Badge
-                      className={
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
                         user.emailVerified
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                          : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-                      }
+                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                          : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                      }`}
                     >
                       {user.emailVerified ? (
                         <CheckCircle2 className="h-3.5 w-3.5" />
@@ -594,9 +569,9 @@ export function ProfileClient({
                         <AlertTriangle className="h-3.5 w-3.5" />
                       )}
                       {user.emailVerified ? "Đã xác minh" : "Chưa xác minh"}
-                    </Badge>
+                    </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-neutral-400">
                     <span className="inline-flex items-center gap-1">
                       <Mail className="h-4 w-4" />
                       {user.email}
@@ -607,17 +582,17 @@ export function ProfileClient({
                     </span>
                   </div>
                   <div className="mt-4 grid max-w-xl grid-cols-3 gap-3">
-                    <div className="rounded-xl bg-muted/50 p-3">
-                      <p className="text-lg font-bold">{stats.bidsPlaced}</p>
-                      <p className="text-xs text-muted-foreground">Bid đã đặt</p>
+                    <div className="rounded-xl bg-white/5 p-3">
+                      <p className="text-lg font-bold text-white">{stats.bidsPlaced}</p>
+                      <p className="text-xs text-neutral-400">Bid đã đặt</p>
                     </div>
-                    <div className="rounded-xl bg-muted/50 p-3">
-                      <p className="text-lg font-bold">{stats.auctionsCreated}</p>
-                      <p className="text-xs text-muted-foreground">Phiên đã tạo</p>
+                    <div className="rounded-xl bg-white/5 p-3">
+                      <p className="text-lg font-bold text-white">{stats.auctionsCreated}</p>
+                      <p className="text-xs text-neutral-400">Phiên đã tạo</p>
                     </div>
-                    <div className="rounded-xl bg-muted/50 p-3">
-                      <p className="text-lg font-bold">{stats.trustScore}/100</p>
-                      <p className="text-xs text-muted-foreground">Uy tín</p>
+                    <div className="rounded-xl bg-white/5 p-3">
+                      <p className="text-lg font-bold text-white">{stats.trustScore}/100</p>
+                      <p className="text-xs text-neutral-400">Uy tín</p>
                     </div>
                   </div>
                 </div>
@@ -626,6 +601,7 @@ export function ProfileClient({
               <div className="flex flex-col gap-2 sm:flex-row lg:pb-1">
                 <Button
                   variant="outline"
+                  className="border-white/10 bg-white/5 text-white hover:bg-white/10"
                   onClick={() => {
                     document
                       .querySelector('[data-value="personal"]')
@@ -635,7 +611,7 @@ export function ProfileClient({
                   <User className="mr-2 h-4 w-4" />
                   Chỉnh sửa hồ sơ
                 </Button>
-                <Button variant="outline" asChild>
+                <Button variant="outline" className="border-white/10 bg-white/5 text-white hover:bg-white/10" asChild>
                   <Link href="/change-password">
                     <KeyRound className="mr-2 h-4 w-4" />
                     Đổi mật khẩu
@@ -643,6 +619,7 @@ export function ProfileClient({
                 </Button>
                 <Button
                   variant="destructive"
+                  className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
                   onClick={handleLogout}
                   disabled={isLoggingOut || isPending}
                 >
@@ -654,49 +631,50 @@ export function ProfileClient({
           </CardContent>
         </Card>
 
+        {/* Stat Cards */}
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             {
               label: "Phiên đã tạo",
               value: stats.auctionsCreated,
               icon: Gavel,
-              tone: "text-blue-600 bg-blue-50 dark:bg-blue-950/40",
+              accent: "from-amber-500/20 to-orange-600/10 text-amber-400",
               hint: `${stats.activeSelling} đang diễn ra`,
             },
             {
               label: "Tổng lượt bid",
               value: stats.bidsPlaced,
               icon: TrendingUp,
-              tone: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40",
+              accent: "from-emerald-500/20 to-green-600/10 text-emerald-400",
               hint: formatCurrency(stats.totalBidValue),
             },
             {
               label: "Phiên đang dẫn đầu",
               value: stats.auctionsWinning,
               icon: Trophy,
-              tone: "text-amber-600 bg-amber-50 dark:bg-amber-950/40",
+              accent: "from-amber-500/20 to-yellow-600/10 text-yellow-400",
               hint: `${stats.auctionsWon} phiên đã thắng`,
             },
             {
               label: "Watchlist",
               value: stats.watchlistCount,
               icon: Heart,
-              tone: "text-rose-600 bg-rose-50 dark:bg-rose-950/40",
+              accent: "from-rose-500/20 to-pink-600/10 text-rose-400",
               hint: `${stats.unreadNotifications} thông báo chưa đọc`,
             },
           ].map((item) => (
             <Card
               key={item.label}
-              className="transition hover:-translate-y-0.5 hover:shadow-md"
+              className="border-white/10 bg-white/5 backdrop-blur-sm transition hover:-translate-y-1 hover:border-white/20 hover:shadow-xl hover:shadow-white/5"
             >
-              <CardContent>
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm text-muted-foreground">{item.label}</p>
-                    <p className="mt-1 text-2xl font-bold">{item.value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
+                    <p className="text-sm text-neutral-400">{item.label}</p>
+                    <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+                    <p className="mt-1 text-xs text-neutral-500">{item.hint}</p>
                   </div>
-                  <div className={`rounded-2xl p-3 ${item.tone}`}>
+                  <div className={`rounded-2xl bg-gradient-to-br p-3 ${item.accent}`}>
                     <item.icon className="h-5 w-5" />
                   </div>
                 </div>
@@ -705,9 +683,10 @@ export function ProfileClient({
           ))}
         </div>
 
+        {/* Tabs */}
         <Tabs defaultValue="overview" className="gap-5">
           <div className="overflow-x-auto pb-1">
-            <TabsList className="h-auto w-max justify-start rounded-2xl bg-muted/70 p-1">
+            <TabsList className="h-auto w-max justify-start rounded-2xl bg-white/5 p-1">
               {[
                 ["overview", LayoutDashboard, "Tổng quan"],
                 ["personal", User, "Thông tin"],
@@ -721,7 +700,7 @@ export function ProfileClient({
                 <TabsTrigger
                   key={String(value)}
                   value={String(value)}
-                  className="h-10 px-3"
+                  className="h-10 px-3 text-neutral-400 data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-300"
                 >
                   <Icon className="h-4 w-4" />
                   <span>{String(label)}</span>
@@ -730,12 +709,13 @@ export function ProfileClient({
             </TabsList>
           </div>
 
+          {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-5">
             <div className="grid gap-5 lg:grid-cols-[1.4fr_0.8fr]">
-              <Card>
+              <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle>Hoạt động gần đây</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-white">Hoạt động gần đây</CardTitle>
+                  <CardDescription className="text-neutral-400">
                     Dòng thời gian tổng hợp từ bid, sản phẩm và audit log thật.
                   </CardDescription>
                 </CardHeader>
@@ -746,7 +726,7 @@ export function ProfileClient({
                       title="Chưa có hoạt động"
                       description="Khi bạn đặt giá, tạo phiên đấu giá hoặc cập nhật hồ sơ, hoạt động sẽ xuất hiện tại đây."
                       action={
-                        <Button asChild>
+                        <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500" asChild>
                           <Link href="/auctions">Khám phá phiên đấu giá</Link>
                         </Button>
                       }
@@ -755,20 +735,20 @@ export function ProfileClient({
                     <div className="space-y-4">
                       {recentBids.slice(0, 4).map((bid) => (
                         <div key={bid.id} className="flex gap-3">
-                          <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40">
+                          <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/10 text-amber-400">
                             <Gavel className="h-4 w-4" />
                           </div>
-                          <div className="min-w-0 flex-1 border-b pb-4 last:border-0">
-                            <p className="font-medium">
+                          <div className="min-w-0 flex-1 border-b border-white/10 pb-4 last:border-0">
+                            <p className="font-medium text-white">
                               Đã đặt {formatCurrency(bid.amount)} cho{" "}
                               <Link
                                 href={`/auctions/${bid.auctionId}`}
-                                className="text-blue-600 hover:underline"
+                                className="text-amber-400 hover:text-amber-300"
                               >
                                 {bid.auctionTitle}
                               </Link>
                             </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
+                            <p className="mt-1 text-xs text-neutral-500">
                               {formatDateTime(bid.createdAt)}
                               {bid.isAutoBid ? " · Auto-bid" : ""}
                             </p>
@@ -777,14 +757,14 @@ export function ProfileClient({
                       ))}
                       {auditLogs.slice(0, 3).map((log) => (
                         <div key={log.id} className="flex gap-3">
-                          <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">
+                          <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
                             <Activity className="h-4 w-4" />
                           </div>
-                          <div className="min-w-0 flex-1 border-b pb-4 last:border-0">
-                            <p className="font-medium">
+                          <div className="min-w-0 flex-1 border-b border-white/10 pb-4 last:border-0">
+                            <p className="font-medium text-white">
                               {log.action.replaceAll("_", " ").toLowerCase()}
                             </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
+                            <p className="mt-1 text-xs text-neutral-500">
                               {log.resourceType} · {formatDateTime(log.createdAt)}
                             </p>
                           </div>
@@ -796,44 +776,37 @@ export function ProfileClient({
               </Card>
 
               <div className="space-y-5">
-                <Card>
+                <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
                   <CardHeader>
-                    <CardTitle>Độ hoàn thiện hồ sơ</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="text-white">Độ hoàn thiện hồ sơ</CardTitle>
+                    <CardDescription className="text-neutral-400">
                       Hoàn thiện thêm thông tin để tăng độ tin cậy khi giao dịch.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="mb-4">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{completedItems}/5 mục</span>
-                        <span className="text-muted-foreground">
+                        <span className="font-medium text-white">{completedItems}/5 mục</span>
+                        <span className="text-neutral-500">
                           {Math.round((completedItems / 5) * 100)}%
                         </span>
                       </div>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
                         <div
-                          className="h-full rounded-full bg-blue-600 transition-all"
+                          className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all"
                           style={{ width: `${(completedItems / 5) * 100}%` }}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
                       {completionItems.map((item) => (
-                        <div
-                          key={item.label}
-                          className="flex items-center gap-2 text-sm"
-                        >
+                        <div key={item.label} className="flex items-center gap-2 text-sm">
                           {item.done ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                           ) : (
-                            <Clock className="h-4 w-4 text-muted-foreground" />
+                            <Clock className="h-4 w-4 text-neutral-600" />
                           )}
-                          <span
-                            className={
-                              item.done ? "text-foreground" : "text-muted-foreground"
-                            }
-                          >
+                          <span className={item.done ? "text-white" : "text-neutral-500"}>
                             {item.label}
                           </span>
                         </div>
@@ -842,20 +815,14 @@ export function ProfileClient({
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
                   <CardHeader>
-                    <CardTitle>Mẹo sử dụng AutoBid</CardTitle>
+                    <CardTitle className="text-white">Mẹo sử dụng AutoBid</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-muted-foreground">
-                    <p>
-                      • Theo dõi sản phẩm để nhận thông báo khi phiên sắp kết thúc.
-                    </p>
-                    <p>
-                      • Đặt bid sớm giúp hệ thống ghi nhận hoạt động và tăng uy tín.
-                    </p>
-                    <p>
-                      • Người bán nên thêm hình ảnh rõ ràng và mô tả chi tiết.
-                    </p>
+                  <CardContent className="space-y-3 text-sm text-neutral-400">
+                    <p>• Theo dõi sản phẩm để nhận thông báo khi phiên sắp kết thúc.</p>
+                    <p>• Đặt bid sớm giúp hệ thống ghi nhận hoạt động và tăng uy tín.</p>
+                    <p>• Người bán nên thêm hình ảnh rõ ràng và mô tả chi tiết.</p>
                   </CardContent>
                 </Card>
               </div>
@@ -898,14 +865,14 @@ export function ProfileClient({
                 emptyIcon={Bell}
                 emptyText="Không có thông báo"
                 render={(item) => (
-                  <div key={item.id} className="rounded-xl border p-3">
+                  <div key={item.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium">{item.title}</p>
+                      <p className="font-medium text-white">{item.title}</p>
                       {!item.readAt ? (
-                        <span className="mt-1 h-2 w-2 rounded-full bg-blue-600" />
+                        <span className="mt-1 h-2 w-2 rounded-full bg-amber-500" />
                       ) : null}
                     </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    <p className="mt-1 line-clamp-2 text-xs text-neutral-400">
                       {item.message}
                     </p>
                   </div>
@@ -914,286 +881,232 @@ export function ProfileClient({
             </div>
           </TabsContent>
 
+          {/* Personal Tab */}
           <TabsContent value="personal" className="space-y-5">
-            <Card>
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle>Thông tin cá nhân</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-white">Thông tin cá nhân</CardTitle>
+                <CardDescription className="text-neutral-400">
                   Thông tin cá nhân được lưu trực tiếp xuống bảng profiles.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="grid gap-2">
-                    <Label htmlFor="fullName">Họ và tên</Label>
+                    <Label htmlFor="fullName" className="text-neutral-300">Họ và tên</Label>
                     <Input
                       id="fullName"
                       placeholder="Nguyễn Văn A"
                       value={fullName}
                       onChange={(event) => setFullName(event.target.value)}
                       disabled={isPending}
+                      className="border-white/10 bg-black/20 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
                       aria-invalid={Boolean(fieldErrors.fullName?.length)}
                     />
                     {fieldErrors.fullName?.[0] ? (
-                      <p className="text-xs text-destructive">
-                        {fieldErrors.fullName[0]}
-                      </p>
+                      <p className="text-xs text-red-400">{fieldErrors.fullName[0]}</p>
                     ) : null}
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={user.email} disabled />
+                    <Label htmlFor="email" className="text-neutral-300">Email</Label>
+                    <Input id="email" type="email" value={user.email} disabled className="border-white/10 bg-black/20 text-neutral-500" />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="phone">Số điện thoại</Label>
+                    <Label htmlFor="phone" className="text-neutral-300">Số điện thoại</Label>
                     <Input
                       id="phone"
                       placeholder="+84 912 345 678"
                       value={phone}
                       onChange={(event) => setPhone(event.target.value)}
                       disabled={isPending}
+                      className="border-white/10 bg-black/20 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
                       aria-invalid={Boolean(fieldErrors.phone?.length)}
                     />
                     {fieldErrors.phone?.[0] ? (
-                      <p className="text-xs text-destructive">
-                        {fieldErrors.phone[0]}
-                      </p>
+                      <p className="text-xs text-red-400">{fieldErrors.phone[0]}</p>
                     ) : null}
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="role">Vai trò</Label>
-                    <Input id="role" value={ROLE_LABELS[user.role]} disabled />
+                    <Label htmlFor="role" className="text-neutral-300">Vai trò</Label>
+                    <Input id="role" value={ROLE_LABELS[user.role]} disabled className="border-white/10 bg-black/20 text-neutral-500" />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="city">Tỉnh / thành phố</Label>
+                    <Label htmlFor="city" className="text-neutral-300">Tỉnh / thành phố</Label>
                     <Input
                       id="city"
                       placeholder="Hà Nội"
                       value={city}
                       onChange={(event) => setCity(event.target.value)}
+                      className="border-white/10 bg-black/20 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="address">Địa chỉ</Label>
+                    <Label htmlFor="address" className="text-neutral-300">Địa chỉ</Label>
                     <Input
                       id="address"
                       placeholder="Quận Cầu Giấy, Hà Nội"
                       value={address}
                       onChange={(event) => setAddress(event.target.value)}
+                      className="border-white/10 bg-black/20 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
                     />
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="bio">Giới thiệu ngắn</Label>
+                  <Label htmlFor="bio" className="text-neutral-300">Giới thiệu ngắn</Label>
                   <textarea
                     id="bio"
                     placeholder="Chia sẻ ngắn về kinh nghiệm mua/bán đấu giá của bạn..."
                     value={bio}
                     onChange={(event) => setBio(event.target.value)}
-                    className="min-h-28 rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    className="min-h-28 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-neutral-600 shadow-xs outline-none transition focus:border-amber-500/50 focus:ring-[3px] focus:ring-amber-500/20"
                   />
                 </div>
 
                 {fieldErrors.error ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
                     {fieldErrors.error}
                   </div>
                 ) : null}
 
-                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500"
+                    onClick={handleSave}
+                    disabled={isPending || !hasChanges}
+                  >
+                    {isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                  </Button>
+                  {!user.emailVerified ? (
+                    <Button
+                      variant="outline"
+                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                      onClick={handleSendEmailVerification}
+                      disabled={isPending}
+                    >
+                      {isPending ? "Đang gửi..." : "Xác minh email"}
+                    </Button>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Security Tab */}
+          <TabsContent value="security" className="space-y-5">
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-white">Bảo mật</CardTitle>
+                <CardDescription className="text-neutral-400">
+                  Quản lý mật khẩu, phiên đăng nhập và bảo vệ tài khoản.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <KeyRound className="h-5 w-5 text-amber-400" />
+                    <div>
+                      <p className="font-medium text-white">Đổi mật khẩu</p>
+                      <p className="text-sm text-neutral-500">Cập nhật mật khẩu định kỳ để tăng bảo mật</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="border-white/10 bg-white/5 text-white hover:bg-white/10" asChild>
+                    <Link href="/change-password">Đổi</Link>
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <LogOut className="h-5 w-5 text-amber-400" />
+                    <div>
+                      <p className="font-medium text-white">Đăng xuất tất cả thiết bị</p>
+                      <p className="text-sm text-neutral-500">Thu hồi tất cả phiên đăng nhập hiện tại</p>
+                    </div>
+                  </div>
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      setFullName(user.fullName);
-                      setPhone(user.phone ?? "");
-                      setAddress(user.address ?? "");
-                      setCity(user.city ?? "");
-                      setBio(user.bio ?? "");
-                      setFieldErrors({});
-                    }}
+                    className="border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                    onClick={() => startTransition(async () => { const r = await logoutAllDevices(); if (r.success) { toast.success("Đã đăng xuất tất cả thiết bị"); router.refresh(); } else { toast.error(r.error); } })}
                     disabled={isPending}
                   >
-                    Hủy thay đổi
+                    Đăng xuất
                   </Button>
-                  <Button onClick={handleSave} disabled={isPending || !hasChanges}>
-                    {isPending ? (
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                    )}
-                    {isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-red-400" />
+                    <div>
+                      <p className="font-medium text-white">Xóa tài khoản</p>
+                      <p className="text-sm text-neutral-500">Vô hiệu hóa tài khoản vĩnh viễn</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+                    onClick={handleDeleteAccount}
+                    disabled={isPending}
+                  >
+                    Xóa
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="security" className="space-y-5">
-            <div className="grid gap-5 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Bảo mật tài khoản</CardTitle>
-                  <CardDescription>
-                    Quản lý mật khẩu, xác minh và thiết bị đăng nhập.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <SecurityRow
-                    icon={Mail}
-                    title="Xác minh email"
-                    description={user.email}
-                    status={user.emailVerified ? "Đã xác minh" : "Chưa xác minh"}
-                    verified={user.emailVerified}
-                    action={
-                      !user.emailVerified ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleSendEmailVerification}
-                          disabled={isPending}
-                        >
-                          {isPending ? (
-                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Mail className="mr-2 h-4 w-4" />
-                          )}
-                          Gửi email xác minh
-                        </Button>
-                      ) : null
-                    }
-                  />
-                  <SecurityRow
-                    icon={WalletCards}
-                    title="Số điện thoại"
-                    description={user.phone ?? "Chưa thêm số điện thoại"}
-                    status={user.phone ? "Đã thêm" : "Cần bổ sung"}
-                    verified={Boolean(user.phone)}
-                  />
-                  <SecurityRow
-                    icon={Lock}
-                    title="Mật khẩu"
-                    description="Cập nhật định kỳ để bảo vệ tài khoản"
-                    status="Đang hoạt động"
-                    verified
-                  />
-                  <div className="flex flex-col gap-2 pt-2 sm:flex-row">
-                    <Button asChild>
-                      <Link href="/change-password">
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        Đổi mật khẩu
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const confirmed = window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi tất cả thiết bị?");
-                        if (!confirmed) return;
-                        startTransition(async () => {
-                          const result = await logoutAllDevices();
-                          if (result.success) {
-                            toast.success("Đã đăng xuất khỏi tất cả thiết bị");
-                            router.refresh();
-                          } else {
-                            toast.error(result.error);
-                          }
-                        });
-                      }}
-                    >
-                      Đăng xuất tất cả thiết bị
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Phiên đăng nhập gần đây</CardTitle>
-                  <CardDescription>
-                    Placeholder UI cho lịch sử thiết bị và phiên đăng nhập.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {[
-                    ["Windows 11 · Chrome", "Thiết bị hiện tại", "Đang hoạt động"],
-                    ["Mobile browser", "Ước tính từ phiên gần đây", "Placeholder"],
-                  ].map(([device, meta, status]) => (
-                    <div
-                      key={device}
-                      className="flex items-center justify-between rounded-xl border p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-full bg-muted p-2">
-                          <ShieldCheck className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="font-medium">{device}</p>
-                          <p className="text-xs text-muted-foreground">{meta}</p>
-                        </div>
-                      </div>
-                      <Badge className="border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                        {status}
-                      </Badge>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
+          {/* Activity Tab */}
           <TabsContent value="activity" className="space-y-5">
-            <Card>
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle>Hoạt động đấu giá</CardTitle>
-                <CardDescription>
-                  Lịch sử bid gần đây được lấy trực tiếp từ bảng bids.
+                <CardTitle className="text-white">Hoạt động đấu giá của tôi</CardTitle>
+                <CardDescription className="text-neutral-400">
+                  Các phiên đấu giá bạn đã tạo và tham gia.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {recentBids.length === 0 ? (
+                {myAuctions.length === 0 ? (
                   <EmptyState
                     icon={Gavel}
-                    title="Bạn chưa đặt bid nào"
-                    description="Các phiên đã tham gia, đang thắng, đã thắng hoặc đã thua sẽ được hiển thị tại đây."
-                    action={<Button asChild><Link href="/auctions">Tìm phiên đấu giá</Link></Button>}
+                    title="Chưa tạo phiên đấu giá nào"
+                    description="Bạn có thể tạo phiên đầu tiên hoặc khám phá các phiên đang diễn ra."
+                    action={
+                      <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500" asChild>
+                        <Link href="/auctions/new">Tạo phiên mới</Link>
+                      </Button>
+                    }
                   />
                 ) : (
                   <div className="space-y-3">
-                    {recentBids.map((bid) => (
-                      <div
-                        key={bid.id}
-                        className="flex flex-col gap-3 rounded-2xl border p-3 transition hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between"
+                    {myAuctions.map((auction) => (
+                      <Link
+                        key={auction.id}
+                        href={`/auctions/${auction.id}`}
+                        className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
                       >
-                        <div className="flex min-w-0 gap-3">
-                          <AuctionThumb src={bid.auctionImageUrl} title={bid.auctionTitle} icon={Gavel} />
-                          <div className="min-w-0">
-                            <Link
-                              href={`/auctions/${bid.auctionId}`}
-                              className="font-semibold hover:text-blue-600 hover:underline"
-                            >
-                              {bid.auctionTitle}
-                            </Link>
-                            <div className="mt-1 flex flex-wrap gap-2">
-                              <Badge className={getBidStatusClassName(bid.status)}>
-                                {BID_STATUS_LABELS[bid.status]}
-                              </Badge>
-                              <Badge className={getAuctionStatusClassName(bid.auctionStatus)}>
-                                {AUCTION_STATUS_LABELS[bid.auctionStatus]}
-                              </Badge>
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {formatDateTime(bid.createdAt)}
-                              {bid.isAutoBid ? " · Auto-bid" : ""}
-                            </p>
+                        <AuctionThumb src={auction.imageUrl} title={auction.title} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-white">{auction.title}</p>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            <span className="text-xs text-neutral-500">
+                              {formatCurrency(auction.currentPrice)}
+                            </span>
+                            <span className="text-xs text-neutral-600">·</span>
+                            <span className="text-xs text-neutral-500">
+                              {auction.bidCount} bid
+                            </span>
                           </div>
                         </div>
-                        <div className="text-left sm:text-right">
-                          <p className="text-sm text-muted-foreground">Giá đã đặt</p>
-                          <p className="font-bold">{formatCurrency(bid.amount)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Hiện tại: {formatCurrency(bid.auctionCurrentPrice)}
-                          </p>
-                        </div>
-                      </div>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                            auction.status === "ACTIVE"
+                              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                              : auction.status === "PENDING"
+                              ? "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                              : auction.status === "COMPLETED"
+                              ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
+                              : "border-red-500/20 bg-red-500/10 text-red-400"
+                          }`}
+                        >
+                          {AUCTION_STATUS_LABELS[auction.status]}
+                        </span>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -1201,77 +1114,54 @@ export function ProfileClient({
             </Card>
           </TabsContent>
 
+          {/* Products Tab */}
           <TabsContent value="products" className="space-y-5">
-            <Card>
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle>Sản phẩm của tôi</CardTitle>
-                <CardDescription>
-                  Danh sách phiên đấu giá do bạn tạo, kèm trạng thái và hành động nhanh.
+                <CardTitle className="text-white">Sản phẩm của tôi</CardTitle>
+                <CardDescription className="text-neutral-400">
+                  Quản lý sản phẩm đã đăng bán và tạo sản phẩm mới.
                 </CardDescription>
-                <CardAction>
-                  <Button asChild size="sm">
-                    <Link href="/auctions/new">Tạo phiên</Link>
-                  </Button>
-                </CardAction>
               </CardHeader>
               <CardContent>
                 {myAuctions.length === 0 ? (
                   <EmptyState
                     icon={Package}
-                    title="Chưa có sản phẩm"
-                    description="Bắt đầu tạo phiên đấu giá đầu tiên để sản phẩm xuất hiện trong trung tâm tài khoản."
-                    action={<Button asChild><Link href="/auctions/new">Tạo phiên đấu giá</Link></Button>}
+                    title="Chưa có sản phẩm nào"
+                    description="Đăng bán sản phẩm đầu tiên để bắt đầu hành trình đấu giá."
+                    action={
+                      <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500" asChild>
+                        <Link href="/auctions/new">Đăng sản phẩm</Link>
+                      </Button>
+                    }
                   />
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     {myAuctions.map((auction) => (
-                      <div key={auction.id} className="rounded-2xl border p-3 transition hover:shadow-sm">
-                        <div className="flex gap-3">
+                      <Link
+                        key={auction.id}
+                        href={`/auctions/${auction.id}`}
+                        className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/10"
+                      >
+                        <div className="flex items-start gap-3">
                           <AuctionThumb src={auction.imageUrl} title={auction.title} />
                           <div className="min-w-0 flex-1">
-                            <Link
-                              href={`/auctions/${auction.id}`}
-                              className="font-semibold hover:text-blue-600 hover:underline"
-                            >
-                              {auction.title}
-                            </Link>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Badge className={getAuctionStatusClassName(auction.status)}>
-                                {AUCTION_STATUS_LABELS[auction.status]}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {auction.bidCount} bid · {auction.watchCount} theo dõi
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm font-bold">
+                            <p className="font-medium text-white truncate">{auction.title}</p>
+                            <p className="mt-1 text-sm text-amber-400 font-semibold">
                               {formatCurrency(auction.currentPrice)}
                             </p>
+                            <div className="mt-2 flex gap-2">
+                              <span className="text-xs text-neutral-500">
+                                {auction.bidCount} bid
+                              </span>
+                              <span className="text-xs text-neutral-600">·</span>
+                              <span className="text-xs text-neutral-500">
+                                Xem: {auction.watchCount}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                        <Separator className="my-3" />
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant="outline" size="sm" asChild>
-                            <Link href={`/auctions/${auction.id}`}>
-                              <Eye className="mr-1 h-3.5 w-3.5" />
-                              Xem
-                            </Link>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePlaceholderAction("Chỉnh sửa phiên chưa có UI/API")}
-                          >
-                            Chỉnh sửa
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePlaceholderAction("Đăng lại phiên chưa có API")}
-                          >
-                            Đăng lại
-                          </Button>
-                        </div>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -1279,12 +1169,13 @@ export function ProfileClient({
             </Card>
           </TabsContent>
 
+          {/* Watchlist Tab */}
           <TabsContent value="watchlist" className="space-y-5">
-            <Card>
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle>Watchlist / Yêu thích</CardTitle>
-                <CardDescription>
-                  Các phiên đang theo dõi, giá hiện tại và thời gian còn lại.
+                <CardTitle className="text-white">Watchlist</CardTitle>
+                <CardDescription className="text-neutral-400">
+                  Các phiên đấu giá bạn đang theo dõi.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1292,43 +1183,23 @@ export function ProfileClient({
                   <EmptyState
                     icon={Heart}
                     title="Watchlist đang trống"
-                    description="Theo dõi phiên đấu giá bạn quan tâm để quay lại nhanh và nhận thông báo."
-                    action={<Button asChild><Link href="/auctions">Khám phá đấu giá</Link></Button>}
+                    description="Theo dõi phiên đấu giá yêu thích để không bỏ lỡ cơ hội."
+                    action={
+                      <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500" asChild>
+                        <Link href="/auctions">Khám phá phiên đấu giá</Link>
+                      </Button>
+                    }
                   />
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-3">
                     {watchlistItems.map((item) => (
-                      <div key={item.id} className="rounded-2xl border p-3 transition hover:bg-muted/30">
-                        <div className="flex gap-3">
-                          <AuctionThumb src={item.auction.imageUrl} title={item.auction.title} icon={Heart} />
-                          <div className="min-w-0 flex-1">
-                            <Link
-                              href={`/auctions/${item.auction.id}`}
-                              className="font-semibold hover:text-blue-600 hover:underline"
-                            >
-                              {item.auction.title}
-                            </Link>
-                            <p className="mt-1 text-sm font-bold">
-                              {formatCurrency(item.auction.currentPrice)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.auction.bidCount} bid · {formatRemainingTime(item.auction.endsAt)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <Button variant="outline" size="sm" asChild>
-                            <Link href={`/auctions/${item.auction.id}`}>Xem chi tiết</Link>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePlaceholderAction("Bỏ theo dõi chưa có server action")}
-                          >
-                            Bỏ theo dõi
-                          </Button>
-                        </div>
-                      </div>
+                      <AuctionMiniRow
+                        key={item.id}
+                        href={`/auctions/${item.auction.id}`}
+                        imageUrl={item.auction.imageUrl}
+                        title={item.auction.title}
+                        subtitle={`${formatCurrency(item.auction.currentPrice)} · ${formatRemainingTime(item.auction.endsAt)}`}
+                      />
                     ))}
                   </div>
                 )}
@@ -1336,64 +1207,72 @@ export function ProfileClient({
             </Card>
           </TabsContent>
 
+          {/* Notifications Tab */}
           <TabsContent value="notifications" className="space-y-5">
-            <Card>
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle>Thông báo</CardTitle>
-                <CardDescription>
-                  Phân loại thông báo đấu giá, hệ thống và giao dịch.
-                </CardDescription>
-                <CardAction>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleMarkAllNotificationsRead}
-                    disabled={notifications.length === 0}
-                  >
-                    Đánh dấu tất cả là đã đọc
-                  </Button>
-                </CardAction>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white">Thông báo</CardTitle>
+                    <CardDescription className="text-neutral-400">
+                      Thông báo đấu giá, bid và hệ thống.
+                    </CardDescription>
+                  </div>
+                  {notifications.some((n) => !n.readAt) ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                      onClick={handleMarkAllNotificationsRead}
+                      disabled={isPending}
+                    >
+                      <CheckCircle2 className="mr-1 h-4 w-4" />
+                      Đánh dấu đã đọc
+                    </Button>
+                  ) : null}
+                </div>
               </CardHeader>
               <CardContent>
                 {notifications.length === 0 ? (
                   <EmptyState
                     icon={Bell}
                     title="Không có thông báo"
-                    description="Thông báo về bid, phiên sắp kết thúc và hệ thống sẽ xuất hiện tại đây."
+                    description="Bạn sẽ nhận thông báo khi có hoạt động liên quan đến tài khoản."
                   />
                 ) : (
-                  <div className="space-y-3">
-                    {notifications.map((notification) => (
+                  <div className="space-y-2">
+                    {notifications.map((n) => (
                       <div
-                        key={notification.id}
-                        className={`rounded-2xl border p-4 ${
-                          notification.readAt ? "bg-background" : "bg-blue-50/60 dark:bg-blue-950/20"
+                        key={n.id}
+                        className={`rounded-xl border p-3 transition ${
+                          n.readAt
+                            ? "border-white/5 bg-white/[0.02]"
+                            : "border-amber-500/20 bg-amber-500/5"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">
-                                {NOTIFICATION_TYPE_LABELS[notification.type]}
-                              </Badge>
-                              {!notification.readAt ? (
-                                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-                                  Chưa đọc
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <p className="mt-2 font-semibold">{notification.title}</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {notification.message}
-                            </p>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              {formatDateTime(notification.createdAt)}
-                            </p>
-                          </div>
-                          {notification.auctionId ? (
-                            <Button variant="outline" size="sm" asChild>
-                              <Link href={`/auctions/${notification.auctionId}`}>Xem</Link>
-                            </Button>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`font-medium ${n.readAt ? "text-neutral-300" : "text-white"}`}>
+                            {n.title}
+                          </p>
+                          {!n.readAt ? (
+                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+                          ) : null}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm text-neutral-400">
+                          {n.message}
+                        </p>
+                        <div className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
+                          <span>{formatDateTime(n.createdAt)}</span>
+                          {n.auctionTitle ? (
+                            <>
+                              <span>·</span>
+                              <Link
+                                href={`/auctions/${n.auctionId}`}
+                                className="text-amber-400 hover:text-amber-300"
+                              >
+                                {n.auctionTitle}
+                              </Link>
+                            </>
                           ) : null}
                         </div>
                       </div>
@@ -1404,219 +1283,72 @@ export function ProfileClient({
             </Card>
           </TabsContent>
 
+          {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-5">
-            <div className="grid gap-5 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Cài đặt thông báo</CardTitle>
-                  <CardDescription>
-                    Tùy chọn được lưu trực tiếp xuống bảng user_preferences.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <ToggleRow
-                    title="Nhận email thông báo"
-                    description="Cập nhật quan trọng về tài khoản và giao dịch"
-                    checked={emailNotifications}
-                    onChange={setEmailNotifications}
-                  />
-                  <ToggleRow
-                    title="Thông báo đấu giá"
-                    description="Bid mới, bị vượt giá, phiên sắp kết thúc"
-                    checked={bidNotifications}
-                    onChange={setBidNotifications}
-                  />
-                  <ToggleRow
-                    title="Email marketing"
-                    description="Gợi ý phiên nổi bật và tin tức AutoBid.vn"
-                    checked={marketingNotifications}
-                    onChange={setMarketingNotifications}
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={handleSaveNotificationSettings}
-                    disabled={isPending}
-                  >
-                    Lưu cài đặt
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="border-red-200 dark:border-red-900/60">
-                <CardHeader>
-                  <CardTitle className="text-red-700 dark:text-red-300">
-                    Danger zone
-                  </CardTitle>
-                  <CardDescription>
-                    Các thao tác nhạy cảm cần xác nhận và backend riêng.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-                    Xóa tài khoản sẽ vô hiệu hóa hồ sơ bằng cơ chế soft delete.
+            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-white">Cài đặt thông báo</CardTitle>
+                <CardDescription className="text-neutral-400">
+                  Quản lý email thông báo từ hệ thống AutoBid.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {[
+                  {
+                    id: "emailNotifications",
+                    label: "Thông báo qua email",
+                    desc: "Nhận thông báo qua email khi có hoạt động quan trọng",
+                    checked: emailNotifications,
+                    setter: setEmailNotifications,
+                  },
+                  {
+                    id: "bidNotifications",
+                    label: "Thông báo bid",
+                    desc: "Nhận thông báo khi có bid mới hoặc bị outbid",
+                    checked: bidNotifications,
+                    setter: setBidNotifications,
+                  },
+                  {
+                    id: "marketingNotifications",
+                    label: "Email tiếp thị",
+                    desc: "Nhận thông tin về tính năng mới và ưu đãi",
+                    checked: marketingNotifications,
+                    setter: setMarketingNotifications,
+                  },
+                ].map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div>
+                      <p className="font-medium text-white">{item.label}</p>
+                      <p className="text-sm text-neutral-500">{item.desc}</p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={item.checked}
+                      onClick={() => item.setter(!item.checked)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                        item.checked ? "bg-amber-500" : "bg-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          item.checked ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
                   </div>
-                  <Button
-                    variant="destructive"
-                    onClick={handleDeleteAccount}
-                    disabled={isPending}
-                  >
-                    Xóa tài khoản
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
+                ))}
+                <Button
+                  className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500"
+                  onClick={handleSaveNotificationSettings}
+                  disabled={isPending}
+                >
+                  {isPending ? "Đang lưu..." : "Lưu cài đặt"}
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
-
-        <div className="mt-6">
-          <Card className="bg-muted/30">
-            <CardContent className="flex flex-col gap-3 py-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                Loading state mẫu cho các khu vực sẽ fetch dữ liệu async phía client:
-              </span>
-              <div className="w-full max-w-xs">
-                <LoadingPreview />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </div>
-    </div>
-  );
-}
-
-function OverviewList<T>({
-  title,
-  items,
-  emptyIcon,
-  emptyText,
-  render,
-}: {
-  title: string;
-  items: T[];
-  emptyIcon: React.ElementType;
-  emptyText: string;
-  render: (item: T) => React.ReactNode;
-}) {
-  const EmptyIcon = emptyIcon;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {items.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            <EmptyIcon className="mx-auto mb-2 h-5 w-5" />
-            {emptyText}
-          </div>
-        ) : (
-          items.map(render)
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AuctionMiniRow({
-  href,
-  imageUrl,
-  title,
-  subtitle,
-}: {
-  href: string;
-  imageUrl: string | null;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex gap-3 rounded-xl border p-3 transition hover:bg-muted/40"
-    >
-      <AuctionThumb src={imageUrl} title={title} />
-      <div className="min-w-0">
-        <p className="truncate font-medium">{title}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-      </div>
-    </Link>
-  );
-}
-
-function SecurityRow({
-  icon: Icon,
-  title,
-  description,
-  status,
-  verified,
-  action,
-}: {
-  icon: React.ElementType;
-  title: string;
-  description: string;
-  status: string;
-  verified: boolean;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border p-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="rounded-full bg-muted p-2">
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="font-medium">{title}</p>
-          <p className="truncate text-sm text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        <Badge
-          className={
-            verified
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-              : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-          }
-        >
-          {status}
-        </Badge>
-        {action}
-      </div>
-    </div>
-  );
-}
-
-function ToggleRow({
-  title,
-  description,
-  checked,
-  onChange,
-}: {
-  title: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
-      <div>
-        <p className="font-medium">{title}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 rounded-full transition ${
-          checked ? "bg-blue-600" : "bg-muted"
-        }`}
-        aria-pressed={checked}
-      >
-        <span
-          className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${
-            checked ? "left-6" : "left-1"
-          }`}
-        />
-      </button>
     </div>
   );
 }
