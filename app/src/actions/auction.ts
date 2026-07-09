@@ -5,12 +5,15 @@ import { AuditAction, AuctionStatus, BidStatus } from "@prisma/client";
 
 import { formatCurrency } from "@/lib/utils";
 import { getCurrentUser } from "@/src/lib/auth";
-import { finalizeExpiredAuctions, getAuctionWithFreshStatus, getBidStatusError, refreshAuctionStatus } from "@/src/lib/auction-lifecycle";
-import { assertNotSellerBidder } from "@/src/lib/authorization";
+import { finalizeExpiredAuctions, getAuctionWithFreshStatus, refreshAuctionStatus                    } from "@/src/lib/auction-lifecycle";
+import { assertNotSellerBidder, isAuthorizationError, requireActionPermission } from "@/src/lib/authorization";
 import { error, type AppErrorCode } from "@/src/lib/error-codes";
 import { logError, normalizeError } from "@/src/lib/error-handling";
 import { prisma } from "@/src/lib/prisma";
 import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
+import { updateCachedPrice, warmAuction } from "@/src/lib/auction-cache";
+import { enqueueBidSideEffects, scheduleAuctionExpiry } from "@/src/lib/queue";
+import { freezeBalance, unfreezeAllForAuction } from "@/src/lib/wallet";
 import { ActionResult, CreateAuctionInput, CreateAuctionSchema, PlaceBidInput, PlaceBidSchema } from "@/src/types";
 
 const NETWORK_ERROR_MESSAGE = "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";
@@ -20,6 +23,12 @@ const BID_RATE_LIMIT = 1;
 const MAX_SAFE_BID_PRICE = 9_000_000_000_000_000;
 const AUTO_EXTENSION_THRESHOLD_MS = 2 * 60 * 1000;
 const AUTO_EXTENSION_DURATION_MS = 2 * 60 * 1000;
+const MAX_AUTO_BID_ROUNDS = 25;
+
+function nextAutoBidAmount(currentPrice: bigint, bidStep: bigint, maxPrice: bigint): bigint | null {
+  const next = currentPrice + bidStep;
+  return next <= maxPrice ? next : null;
+}
 
 function getValidationMessage(error: { flatten: () => { fieldErrors: Record<string, string[]>; formErrors: string[] } }) {
   const flattened = error.flatten();
@@ -166,9 +175,9 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
     });
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return error("UNAUTHENTICATED", LOGIN_REQUIRED_MESSAGE);
+  const user = await requireActionPermission("auctions.create");
+  if (isAuthorizationError(user)) {
+    return error(user.code, user.message);
   }
 
   try {
@@ -224,6 +233,9 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
           id: true,
           title: true,
           startPrice: true,
+          currentPrice: true,
+          bidStep: true,
+          winnerId: true,
           status: true,
           startsAt: true,
           endsAt: true,
@@ -248,6 +260,24 @@ export async function createAuction(data: CreateAuctionInput): Promise<ActionRes
 
       return createdAuction;
     });
+
+    try {
+      if (auction.endsAt) {
+        await scheduleAuctionExpiry(auction.id, auction.endsAt);
+      }
+      if (auction.status === AuctionStatus.ACTIVE) {
+        await warmAuction({
+          id: auction.id,
+          currentPrice: auction.currentPrice,
+          winnerId: auction.winnerId,
+          endsAt: auction.endsAt,
+          bidStep: auction.bidStep,
+          status: auction.status,
+        });
+      }
+    } catch (infraError) {
+      console.error("Create auction infrastructure side effects failed:", infraError);
+    }
 
     revalidatePath("/");
     revalidatePath("/auctions");
@@ -282,9 +312,9 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
     });
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return error("UNAUTHENTICATED", LOGIN_REQUIRED_MESSAGE);
+  const user = await requireActionPermission("bids.create");
+  if (isAuthorizationError(user)) {
+    return error(user.code, user.message);
   }
 
   if (!Number.isSafeInteger(parsed.data.bidPrice) || parsed.data.bidPrice <= 0) {
@@ -328,7 +358,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       const lockedAuctions = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id
         FROM auctions
-        WHERE id = ${parsed.data.auctionId}::uuid
+        WHERE id = ${parsed.data.auctionId}      
           AND deleted_at IS NULL
         FOR UPDATE
       `;
@@ -408,8 +438,10 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         );
       }
 
+      const hasBids = auction.winnerId !== null;
+      const minimumBid = hasBids ? auction.currentPrice + auction.bidStep : auction.startPrice;
+
       if (parsed.data.expectedCurrentPrice && auction.currentPrice.toString() !== parsed.data.expectedCurrentPrice) {
-        const minimumBid = auction.currentPrice + auction.bidStep;
         throw new BidFlowError(
           "PRICE_CHANGED",
           `Giá đã thay đổi. Giá tối thiểu hiện tại là ${formatCurrency(minimumBid)}.`,
@@ -422,15 +454,8 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         );
       }
 
-      if (parsed.data.isAutoBid) {
-        throw new BidFlowError("AUTO_BID_DISABLED", "Auto-bid sắp ra mắt.", {
-          userId: user.id,
-          auctionId: auction.id,
-        });
-      }
-
       const bidAmount = BigInt(parsed.data.bidPrice);
-      const minimumBid = auction.currentPrice + auction.bidStep;
+      const autoBidMaxPrice = parsed.data.autoBidMaxPrice !== undefined ? BigInt(parsed.data.autoBidMaxPrice) : null;
 
       if (bidAmount < minimumBid) {
         throw new BidFlowError("BID_TOO_LOW", `Giá đặt phải lớn hơn hoặc bằng ${formatCurrency(minimumBid)}.`, {
@@ -438,6 +463,40 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           auctionId: auction.id,
           minimumBid: minimumBid.toString(),
         });
+      }
+
+      if (parsed.data.isAutoBid && (!autoBidMaxPrice || autoBidMaxPrice < bidAmount)) {
+        throw new BidFlowError("AUTO_BID_PRICE_EXCEEDS_MAX", "Giá tự động tối đa phải lớn hơn hoặc bằng giá đặt.", {
+          userId: user.id,
+          auctionId: auction.id,
+        });
+      }
+
+      /* ── Wallet: Freeze bidder's balance ── */
+      const freezeResult = await freezeBalance(
+        user.id,
+        auction.id,
+        "pending", /* bidId tạm, sẽ update sau khi tạo bid thật */
+        bidAmount,
+        `Khóa tiền đặt giá cho phiên #${auction.id}`,
+        tx,
+      );
+      if (!freezeResult.success) {
+        throw new BidFlowError(freezeResult.code as AppErrorCode, freezeResult.message, {
+          userId: user.id,
+          auctionId: auction.id,
+        });
+      }
+
+      /* ── Unfreeze previous winner's balance ── */
+      if (auction.winnerId && auction.winnerId !== user.id) {
+        const unfreezeRes = await unfreezeAllForAuction(auction.winnerId, auction.id, tx);
+        if (!unfreezeRes.success) {
+          throw new BidFlowError(unfreezeRes.code as AppErrorCode, unfreezeRes.message, {
+            userId: auction.winnerId,
+            auctionId: auction.id,
+          });
+        }
       }
 
       await tx.bid.updateMany({
@@ -456,16 +515,125 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           auctionId: auction.id,
           bidderId: user.id,
           amount: bidAmount,
-          isAutoBid: false,
-          autoBidMaxPrice: null,
+          isAutoBid: parsed.data.isAutoBid,
+          autoBidMaxPrice,
           status: BidStatus.ACTIVE,
         },
         select: {
           id: true,
           auctionId: true,
           amount: true,
+          bidderId: true,
         },
       });
+
+      /* ── Update freeze record with real bidId ── */
+      const userWallet = await tx.wallet.findUnique({ where: { profileId: user.id }, select: { id: true } });
+      if (userWallet) {
+        await tx.balanceFreeze.updateMany({
+          where: { walletId: userWallet.id, auctionId: auction.id, bidId: "pending" },
+          data: { bidId: createdBid.id },
+        });
+      }
+
+      let finalBid = createdBid;
+      let finalPrice = bidAmount;
+      let finalWinnerId = user.id;
+      let autoBidsPlaced = 0;
+
+      for (let round = 0; round < MAX_AUTO_BID_ROUNDS; round += 1) {
+        const challenger = await tx.bid.findFirst({
+          where: {
+            auctionId: auction.id,
+            isAutoBid: true,
+            autoBidMaxPrice: { gt: finalPrice },
+            bidderId: { not: finalWinnerId },
+            deletedAt: null,
+            status: { not: BidStatus.CANCELLED },
+          },
+          orderBy: [{ autoBidMaxPrice: "desc" }, { createdAt: "asc" }],
+          select: {
+            bidderId: true,
+            autoBidMaxPrice: true,
+          },
+        });
+
+        if (!challenger?.autoBidMaxPrice) {
+          break;
+        }
+
+        const nextAmount = nextAutoBidAmount(finalPrice, auction.bidStep, challenger.autoBidMaxPrice);
+        if (!nextAmount) {
+          break;
+        }
+
+        /* ── Wallet: Freeze challenger, unfreeze current winner ── */
+        const autoFreezeResult = await freezeBalance(
+          challenger.bidderId,
+          auction.id,
+          "pending-auto",
+          nextAmount,
+          `Khóa tiền đặt giá tự động cho phiên #${auction.id}`,
+          tx,
+        );
+        if (!autoFreezeResult.success) {
+          throw new BidFlowError(autoFreezeResult.code as AppErrorCode, autoFreezeResult.message, {
+            userId: challenger.bidderId,
+            auctionId: auction.id,
+          });
+        }
+
+        if (finalWinnerId && finalWinnerId !== challenger.bidderId) {
+          const unfreezeRes = await unfreezeAllForAuction(finalWinnerId, auction.id, tx);
+          if (!unfreezeRes.success) {
+            throw new BidFlowError(unfreezeRes.code as AppErrorCode, unfreezeRes.message, {
+              userId: finalWinnerId,
+              auctionId: auction.id,
+            });
+          }
+        }
+
+        await tx.bid.updateMany({
+          where: {
+            auctionId: auction.id,
+            deletedAt: null,
+            status: BidStatus.ACTIVE,
+          },
+          data: {
+            status: BidStatus.LOST,
+          },
+        });
+
+        finalBid = await tx.bid.create({
+          data: {
+            auctionId: auction.id,
+            bidderId: challenger.bidderId,
+            amount: nextAmount,
+            isAutoBid: true,
+            autoBidMaxPrice: challenger.autoBidMaxPrice,
+            status: BidStatus.ACTIVE,
+          },
+          select: {
+            id: true,
+            auctionId: true,
+            amount: true,
+            bidderId: true,
+          },
+        });
+
+        /* ── Update auto-freeze record with real bidId ── */
+        const challengerWallet = await tx.wallet.findUnique({ where: { profileId: challenger.bidderId }, select: { id: true } });
+        if (challengerWallet) {
+          await tx.balanceFreeze.updateMany({
+            where: { walletId: challengerWallet.id, auctionId: auction.id, bidId: "pending-auto" },
+            data: { bidId: finalBid.id },
+          });
+        }
+
+        finalPrice = nextAmount;
+        finalWinnerId = challenger.bidderId;
+        autoBidsPlaced += 1;
+      }
 
       const shouldAutoExtend =
         auction.autoExtensionEnabled &&
@@ -480,8 +648,8 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       await tx.auction.update({
         where: { id: auction.id },
         data: {
-          currentPrice: bidAmount,
-          winnerId: user.id,
+          currentPrice: finalPrice,
+          winnerId: finalWinnerId,
           updatedAt: now,
           ...(shouldAutoExtend
             ? {
@@ -509,16 +677,57 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
             auctionId: auction.id,
             amount: createdBid.amount.toString(),
             bidderId: user.id,
-            auctionCurrentPrice: bidAmount.toString(),
-            auctionWinnerId: user.id,
+            auctionCurrentPrice: finalPrice.toString(),
+            auctionWinnerId: finalWinnerId,
             autoExtended: shouldAutoExtend,
             endsAt: nextEndsAt?.toISOString() ?? null,
           },
         },
       });
 
-      return { createdBid, autoBidsPlaced: 0 };
+      let bidderName = user.fullName;
+      if (finalWinnerId !== user.id) {
+        const finalWinnerProfile = await tx.profile.findUnique({
+          where: { id: finalWinnerId },
+          select: { fullName: true }
+        });
+        bidderName = finalWinnerProfile?.fullName ?? user.fullName;
+      }
+
+      return {
+        createdBid: finalBid,
+        autoBidsPlaced,
+        shouldAutoExtend,
+        nextEndsAt,
+        previousPrice: auction.currentPrice,
+        previousWinnerId: auction.winnerId,
+        bidderName,
+      };
     });
+
+    try {
+      await enqueueBidSideEffects({
+        auctionId: result.createdBid.auctionId,
+        bidId: result.createdBid.id,
+        bidderId: result.createdBid.bidderId,
+        bidderName: result.bidderName,
+        amount: result.createdBid.amount.toString(),
+        previousPrice: result.previousPrice.toString(),
+        winnerId: result.previousWinnerId,
+        autoExtended: result.shouldAutoExtend,
+        endsAt: result.nextEndsAt ? result.nextEndsAt.toISOString() : null,
+      });
+    } catch (infraError) {
+      console.error("Failed to enqueue bid side effects:", infraError);
+    }
+
+    if (result.shouldAutoExtend && result.nextEndsAt) {
+      try {
+        await scheduleAuctionExpiry(result.createdBid.auctionId, result.nextEndsAt);
+      } catch (infraError) {
+        console.error("Failed to reschedule auction expiry:", infraError);
+      }
+    }
 
     revalidatePath("/");
     revalidatePath("/auctions");

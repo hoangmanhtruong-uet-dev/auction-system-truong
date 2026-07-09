@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Book, Hammer, Home, Image, List, User } from "lucide-react";
+import { Book, Boxes, Hammer, Home, Image, List, User } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -57,6 +57,11 @@ const navItems = [
     title: "Đăng bán",
     url: "/auctions/new",
     icon: Hammer,
+  },
+  {
+    title: "Kho của tôi",
+    url: "/inventory",
+    icon: Boxes,
   },
   {
     title: "Sản phẩm của tôi",

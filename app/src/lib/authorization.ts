@@ -1,12 +1,46 @@
 import { AuctionStatus, Prisma, UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { createAdminAuditLog } from "@/src/lib/audit";
-import { getCurrentUser, isPrimaryAdmin, type SafeUser } from "@/src/lib/auth";
+import { getCurrentUser, type SafeUser } from "@/src/lib/auth";
 import { error, type ErrorResult } from "@/src/lib/error-codes";
 import { prisma } from "@/src/lib/prisma";
+import {
+  ROLE_RANK,
+  hasAnyPermission,
+  hasPermission,
+  type Permission,
+} from "@/src/lib/rbac";
+
+export {
+  PERMISSIONS,
+  ROLE_PERMISSIONS,
+  ROLE_RANK,
+  hasAnyPermission,
+  hasPermission,
+  type Permission,
+} from "@/src/lib/rbac";
+
+/**
+ * Check if user can access the /admin area.
+ * Requires `admin.area.access` permission — only assigned to ADMIN and SUPER_ADMIN.
+ * This is a shell-level guard; individual pages/actions still use their own
+ * specific permission checks (e.g. users.read.all, payments.read.all).
+ */
+export async function requireAdminAreaAccess(): Promise<SafeUser | ErrorResult> {
+  return requirePermission("admin.area.access");
+}
+
+export function canAccessAdminArea(user: SafeUser): boolean {
+  return hasPermission(user, "admin.area.access");
+}
 
 function isError(r: SafeUser | ErrorResult): r is ErrorResult {
   return "ok" in r && r.ok === false;
+}
+
+function forbidden(message = "Bạn không có quyền thực hiện thao tác này.") {
+  return error("FORBIDDEN", message);
 }
 
 export async function requireAuth(): Promise<SafeUser | ErrorResult> {
@@ -16,25 +50,92 @@ export async function requireAuth(): Promise<SafeUser | ErrorResult> {
     return error("UNAUTHENTICATED", "Bạn cần đăng nhập để tiếp tục.");
   }
 
-  if (user.role === UserRole.ADMIN && !isPrimaryAdmin(user)) {
-    return error("FORBIDDEN", "Bạn không có quyền thực hiện thao tác này.");
+  return user;
+}
+
+export async function requirePermission(permission: Permission): Promise<SafeUser | ErrorResult> {
+  const user = await requireAuth();
+  if (isError(user)) return user;
+
+  if (!hasPermission(user, permission)) {
+    return forbidden();
   }
 
   return user;
 }
 
-export async function requireRole(allowedRoles: UserRole[]): Promise<SafeUser | ErrorResult> {
+export async function requireAnyPermission(permissions: readonly Permission[]): Promise<SafeUser | ErrorResult> {
   const user = await requireAuth();
+  if (isError(user)) return user;
 
-  if (isError(user)) {
-    return user;
-  }
-
-  if (!allowedRoles.includes(user.role)) {
-    return error("FORBIDDEN", "Bạn không có quyền thực hiện thao tác này.");
+  if (!hasAnyPermission(user, permissions)) {
+    return forbidden();
   }
 
   return user;
+}
+
+export async function requirePagePermission(permission: Permission): Promise<SafeUser> {
+  const user = await requirePermission(permission);
+  if (isError(user)) {
+    redirect(user.code === "UNAUTHENTICATED" ? "/auth/login" : "/");
+  }
+  return user;
+}
+
+export async function requireActionPermission(permission: Permission): Promise<SafeUser | ErrorResult> {
+  return requirePermission(permission);
+}
+
+export async function assertOwnerOrPermission(params: {
+  ownerId: string;
+  actor: SafeUser;
+  permission: Permission;
+  message?: string;
+}): Promise<true | ErrorResult> {
+  if (params.ownerId === params.actor.id || hasPermission(params.actor, params.permission)) {
+    return true;
+  }
+
+  return forbidden(params.message ?? "Bạn chỉ được thao tác với tài nguyên của mình.");
+}
+
+export function assertCanManageUserRole(params: {
+  actor: SafeUser;
+  target: Pick<SafeUser, "id" | "role" | "email">;
+  nextRole: UserRole;
+}): true | ErrorResult {
+  const { actor, target, nextRole } = params;
+
+  if (!hasPermission(actor, "users.update.role")) {
+    return forbidden();
+  }
+
+  if (actor.id === target.id) {
+    return error("FORBIDDEN", "Không thể tự thay đổi vai trò của chính mình trong UI quản trị.");
+  }
+
+  if (target.role === nextRole) {
+    return true;
+  }
+
+  if (target.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN) {
+    return error("FORBIDDEN", "ADMIN không thể thay đổi hoặc hạ quyền SUPER_ADMIN.");
+  }
+
+  if (nextRole === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN) {
+    return error("FORBIDDEN", "Chỉ SUPER_ADMIN mới có thể cấp quyền SUPER_ADMIN.");
+  }
+
+  if (ROLE_RANK[nextRole] >= ROLE_RANK[actor.role] && actor.role !== UserRole.SUPER_ADMIN) {
+    return error("FORBIDDEN", "Bạn không thể cấp vai trò ngang hoặc cao hơn vai trò của mình.");
+  }
+
+  if (ROLE_RANK[target.role] >= ROLE_RANK[actor.role] && actor.role !== UserRole.SUPER_ADMIN) {
+    return error("FORBIDDEN", "Bạn không thể thay đổi tài khoản có vai trò ngang hoặc cao hơn mình.");
+  }
+
+  return true;
 }
 
 export async function assertAuctionOwner(auctionId: string, userId: string): Promise<true | ErrorResult> {
@@ -55,7 +156,7 @@ export async function assertAuctionOwner(auctionId: string, userId: string): Pro
   }
 
   if (auction.sellerId !== userId) {
-    return error("FORBIDDEN", "Bạn chỉ được thao tác với phiên đấu giá của mình.");
+    return forbidden("Bạn chỉ được thao tác với phiên đấu giá của mình.");
   }
 
   return true;
@@ -70,7 +171,7 @@ export function assertNotSellerBidder(auction: { sellerId: string }, bidderId: s
 }
 
 export function canSellerBid(user: SafeUser, auction: { sellerId: string; status: AuctionStatus }): boolean {
-  return user.role === UserRole.ADMIN || (user.role === UserRole.USER && auction.sellerId !== user.id);
+  return hasPermission(user, "bids.create") && auction.sellerId !== user.id;
 }
 
 export function assertAdminActionReason(reason: unknown): true | ErrorResult {
@@ -86,11 +187,8 @@ export function assertAdminActionReason(reason: unknown): true | ErrorResult {
 }
 
 export async function requireAdminWithReason(reason: unknown): Promise<SafeUser | ErrorResult> {
-  const user = await requireRole([UserRole.ADMIN]);
-
-  if (isError(user)) {
-    return user;
-  }
+  const user = await requireAnyPermission(["auctions.cancel.any", "users.suspend", "payments.mark_paid"]);
+  if (isError(user)) return user;
 
   const reasonResult = assertAdminActionReason(reason);
   if (reasonResult !== true) {
@@ -123,6 +221,8 @@ export async function auditAdminAction(params: {
 }
 
 export function canEditAuction(user: SafeUser, auction: { sellerId: string; status: AuctionStatus }): boolean {
-  if (user.role === UserRole.ADMIN) return true;
-  return user.role === UserRole.SELLER && auction.sellerId === user.id && auction.status === AuctionStatus.PENDING;
+  if (hasPermission(user, "auctions.update.any")) return true;
+  return hasPermission(user, "auctions.update.own") && auction.sellerId === user.id && auction.status === AuctionStatus.PENDING;
 }
+
+export { isError as isAuthorizationError };

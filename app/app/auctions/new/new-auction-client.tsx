@@ -2,7 +2,8 @@
 
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle, Image as ImageIcon, Clock, Calendar, Lock, Info, ChevronRight, X, ArrowLeft, WifiOff, Sparkles, Shield, Tag } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, CheckCircle, Image as ImageIcon, Clock, Calendar, Lock, Info, ChevronRight, X, ArrowLeft, WifiOff, Sparkles, Shield, Tag, Boxes } from "lucide-react";
 
 import { useNetworkStatus } from "@/hooks/use-network-status";
 
@@ -336,6 +337,12 @@ export function NewAuctionClient() {
                 <Sparkles className="h-3.5 w-3.5 text-amber-400" />
                 <span>Miễn phí đăng phiên</span>
               </div>
+              <Button asChild variant="outline" className="gap-2 border-white/10 bg-white/5 text-neutral-200 hover:bg-white/10 hover:text-white">
+                <Link href="/inventory">
+                  <Boxes className="h-4 w-4" />
+                  Kho của tôi
+                </Link>
+              </Button>
             </div>
           </div>
         </div>

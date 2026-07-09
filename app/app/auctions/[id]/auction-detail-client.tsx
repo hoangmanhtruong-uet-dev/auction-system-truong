@@ -762,6 +762,7 @@ export default function AuctionDetailClient({
         setIsRealtimeConnected(true);
         reconnectAttempts = 0;
         stopPolling();
+        refetchAuction();
       };
 
       eventSource.onmessage = (event) => {

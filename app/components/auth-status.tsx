@@ -82,7 +82,7 @@ export function AuthStatus({ user }: { user: SafeUser | null }) {
             Hồ sơ
           </Link>
         </DropdownMenuItem>
-        {user.role === "ADMIN" && (
+        {(user.role === "ADMIN" || user.role === "SUPER_ADMIN") && (
           <DropdownMenuItem asChild>
             <Link href="/admin">
               <Settings className="mr-2 h-4 w-4" />

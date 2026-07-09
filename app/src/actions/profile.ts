@@ -137,6 +137,7 @@ export async function changePassword(data: ChangePasswordInput): Promise<ActionR
       where: { id: user.id },
       data: {
         passwordHash,
+        sessionVersion: { increment: 1 },
       },
     });
 
@@ -261,12 +262,10 @@ export async function logoutAllDevices(): Promise<ActionResult<void>> {
   const user = await requireAuth();
 
   try {
-    // Soft delete all active sessions by updating session data
-    // For now, we'll just invalidate all sessions by marking the profile as needing re-auth
     await prisma.profile.update({
       where: { id: user.id },
       data: {
-        updatedAt: new Date(),
+        sessionVersion: { increment: 1 },
       },
     });
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { formatDateTime } from "@/lib/utils";
@@ -10,11 +10,13 @@ import { AdminDataTable, TableEmptyState } from "../_components/admin-data-table
 import { StatusBadge } from "../_components/status-badge";
 import { UserActions } from "../_components/user-actions";
 
+type AdminRole = "USER" | "SELLER" | "SUPPORT" | "MODERATOR" | "FINANCE" | "ADMIN" | "SUPER_ADMIN";
+
 type AdminUser = {
   id: string;
   email: string;
   fullName: string;
-  role: "USER" | "SELLER" | "ADMIN";
+  role: AdminRole;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -23,6 +25,8 @@ type AdminUser = {
     bids: number;
   };
 };
+
+const ROLE_OPTIONS: AdminRole[] = ["USER", "SELLER", "SUPPORT", "MODERATOR", "FINANCE", "ADMIN", "SUPER_ADMIN"];
 
 export function AdminUsersClient({
   initialUsers,
@@ -33,7 +37,7 @@ export function AdminUsersClient({
 }) {
   const [users, setUsers] = useState(initialUsers);
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState<"all" | AdminUser["role"]>("all");
+  const [role, setRole] = useState<"all" | AdminRole>("all");
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -47,7 +51,7 @@ export function AdminUsersClient({
     });
   }, [role, search, users]);
 
-  function handleUserChanged(id: string, patch: { deletedAt: string | null }) {
+  function handleUserChanged(id: string, patch: { deletedAt?: string | null; role?: AdminRole }) {
     setUsers((current) => current.map((user) => (user.id === id ? { ...user, ...patch } : user)));
   }
 
@@ -55,35 +59,39 @@ export function AdminUsersClient({
     <div className="space-y-5">
       <div>
         <p className="text-sm font-medium text-amber-400">Users</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Quản lý người dùng</h1>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Quan ly nguoi dung</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Theo dõi vai trò, số auction, số bid và trạng thái tài khoản dựa trên schema hiện tại.
+          Quan ly role RBAC, so auction, so bid va trang thai tai khoan. Doi role va block user deu ghi audit log.
         </p>
       </div>
 
-      <div className="grid gap-3 rounded-xl border border-white/10 bg-white/5 p-3 shadow-xl backdrop-blur-xl md:grid-cols-[1fr_180px]">
+      <div className="grid gap-3 rounded-xl border border-white/10 bg-white/5 p-3 shadow-xl backdrop-blur-xl md:grid-cols-[1fr_220px]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-500" />
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="border-white/10 bg-black/20 pl-9 text-white placeholder:text-neutral-600 focus:border-amber-500/50 focus:ring-amber-500/20"
-            placeholder="Tìm tên hoặc email..."
+            placeholder="Tim ten hoac email..."
           />
         </div>
-        <select className="h-9 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-neutral-300 focus:border-amber-500/50 focus:ring-amber-500/20" value={role} onChange={(event) => setRole(event.target.value as "all" | AdminUser["role"])}>
-          <option value="all" className="bg-neutral-800">Tất cả role</option>
-          <option value="USER" className="bg-neutral-800">USER</option>
-          <option value="SELLER" className="bg-neutral-800">SELLER</option>
-          <option value="ADMIN" className="bg-neutral-800">ADMIN</option>
+        <select
+          className="h-9 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-neutral-300 focus:border-amber-500/50 focus:ring-amber-500/20"
+          value={role}
+          onChange={(event) => setRole(event.target.value as "all" | AdminRole)}
+        >
+          <option value="all" className="bg-neutral-800">Tat ca role</option>
+          {ROLE_OPTIONS.map((item) => (
+            <option key={item} value={item} className="bg-neutral-800">{item}</option>
+          ))}
         </select>
       </div>
 
       <AdminDataTable>
         {filtered.length === 0 ? (
-          <TableEmptyState title="Không có user phù hợp" description="Thử đổi bộ lọc hoặc kiểm tra dữ liệu người dùng." />
+          <TableEmptyState title="Khong co user phu hop" description="Thu doi bo loc hoac kiem tra du lieu nguoi dung." />
         ) : (
-          <table className="w-full min-w-[880px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead className="border-b border-white/10 bg-white/5 text-left text-xs uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Name / email</th>

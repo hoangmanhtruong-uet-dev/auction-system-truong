@@ -2,6 +2,8 @@ import { AuditAction, AuctionStatus, BidStatus, NotificationType, type Prisma, t
 
 import { error, type ErrorResult } from "@/src/lib/error-codes";
 import { prisma } from "@/src/lib/prisma";
+import { forfeitFreeze, unfreezeAllForAuction } from "@/src/lib/wallet";
+import { enqueueSettlement } from "@/src/lib/queue";
 
 type AuctionDbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -218,6 +220,25 @@ export async function finishAuction(
       data: { status: BidStatus.WON },
     });
   }
+  // ── Enqueue async settlement if winner exists ──
+  if (winnerId) {
+    const seller = await client.auction.findUnique({
+      where: { id: auctionId },
+      select: { sellerId: true, currentPrice: true },
+    });
+    if (seller) {
+      try {
+        await enqueueSettlement({
+          auctionId,
+          winnerProfileId: winnerId,
+          sellerProfileId: seller.sellerId,
+          finalPrice: seller.currentPrice.toString(),
+        });
+      } catch (e) {
+        console.error(`[AuctionLifecycle] Failed to enqueue settlement for auction ${auctionId}:`, e);
+      }
+    }
+  }
 
   if (shouldNotifyAndAudit) {
     await client.notification.create({
@@ -297,7 +318,7 @@ export async function finalizeExpiredAuctions(
       const locked = await db.$queryRaw<Array<{ id: string }>>`
         SELECT id
         FROM auctions
-        WHERE id = ${auction.id}::uuid
+        WHERE id = ${auction.id}
           AND deleted_at IS NULL
         FOR UPDATE
       `;
@@ -331,7 +352,7 @@ export async function getAuctionWithFreshStatus(auctionId: string) {
     const locked = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id
       FROM auctions
-      WHERE id = ${auctionId}::uuid
+      WHERE id = ${auctionId}
         AND deleted_at IS NULL
       FOR UPDATE
     `;
@@ -356,6 +377,96 @@ export async function getAuctionWithFreshStatus(auctionId: string) {
       },
     });
   });
+}
+
+/**
+ * Process forfeit when winner fails to pay by deadline.
+ * Forfeits all active freezes for winner, notifies, and unlocks auction for runner-up/relist.
+ */
+export async function processForfeitAuction(
+  auctionId: string,
+  client: AuctionDbClient = prisma,
+): Promise<Record<string, unknown> | ErrorResult> {
+  const auction = await client.auction.findFirst({
+    where: { id: auctionId, deletedAt: null },
+    select: {
+      id: true,
+      status: true,
+      winnerId: true,
+      paidAt: true,
+      payByDeadline: true,
+      title: true,
+      currentPrice: true,
+      sellerId: true,
+    },
+  });
+
+  if (!auction) return error("AUCTION_NOT_FOUND", "Phien dau gia khong ton tai.");
+  if (auction.status !== AuctionStatus.COMPLETED) {
+    return error("INVALID_STATUS", "Chi co the xu ly forfeit cho phien da ket thuc.");
+  }
+  if (!auction.winnerId) return error("NO_WINNER", "Phien nay khong co nguoi thang.");
+  if (auction.paidAt) return error("ALREADY_PAID", "Phien nay da duoc thanh toan, khong the forfeit.");
+
+  const now = new Date();
+
+  // Forfeit all active freezes for winner on this auction
+  const wallet = await client.wallet.findUnique({
+    where: { profileId: auction.winnerId },
+    select: { id: true },
+  });
+
+  if (wallet) {
+    const freezes = await client.balanceFreeze.findMany({
+      where: {
+        walletId: wallet.id,
+        auctionId,
+        status: "ACTIVE" as any,
+      },
+      select: { id: true, amount: true },
+    });
+
+    for (const f of freezes) {
+      const result = await forfeitFreeze(f.id, auction.winnerId, client);
+      if (!result.success) {
+        console.error(`[ForfeitAuction] Failed to forfeit freeze ${f.id} for auction ${auctionId}:`, result.message);
+      }
+    }
+  }
+
+  // Clear winner, reset status so auction can be re-sold / relisted
+  await client.auction.update({
+    where: { id: auctionId },
+    data: {
+      winnerId: null,
+      payByDeadline: null,
+    },
+  });
+
+  // Notify seller
+  await client.notification.create({
+    data: {
+      profileId: auction.sellerId,
+      auctionId,
+      type: NotificationType.SYSTEM,
+      title: "Nguoi thang khong thanh toan",
+      message: `Nguoi thang phien "${auction.title}" da khong thanh toan dung han. Tien coc da bi phat.`,
+      metadata: { auctionId, forfeitedAt: now.toISOString() },
+    },
+  });
+
+  await client.auditLog.create({
+    data: {
+      profileId: auction.sellerId,
+      action: AuditAction.ADMIN_ACTION,
+      resourceType: "auction",
+      resourceId: auctionId,
+      oldValues: { winnerId: auction.winnerId, payByDeadline: (auction.payByDeadline as Date | null)?.toISOString() ?? null },
+      newValues: { winnerId: null, forfeitedAt: now.toISOString() },
+    },
+  });
+
+  return { auctionId, forfeited: true };
 }
 
 export async function markAuctionPaid(
@@ -513,6 +624,28 @@ export async function cancelAuction(
     },
     data: { status: BidStatus.CANCELLED, deletedAt: now },
   });
+
+  // ── Unfreeze all active freezes for this auction ──
+  try {
+    // use any to bypass union type limitation; balanceFreeze/wallet models exist at runtime
+    const tx = client as any;
+    const freezes = await tx.balanceFreeze.findMany({
+      where: { auctionId, status: "ACTIVE" },
+      select: { walletId: true },
+      distinct: ["walletId"],
+    });
+    for (const f of freezes) {
+      const wallet = await tx.wallet.findUnique({
+        where: { id: f.walletId },
+        select: { profileId: true },
+      });
+      if (wallet) {
+        await unfreezeAllForAuction(wallet.profileId, auctionId, client);
+      }
+    }
+  } catch (e) {
+    console.error(`[AuctionLifecycle] Failed to unfreeze freezes for auction ${auctionId}:`, e);
+  }
 
   return updated;
 }

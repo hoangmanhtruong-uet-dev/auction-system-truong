@@ -1,11 +1,11 @@
 import { getAdminUsers } from "@/src/actions/admin-users";
-import { requireAdmin } from "@/src/lib/auth";
+import { requirePagePermission } from "@/src/lib/authorization";
 import { AdminUsersClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {
-  const admin = await requireAdmin();
+  const admin = await requirePagePermission("users.read.all");
   const { users } = await getAdminUsers({ take: 50 });
 
   const serializedUsers = users.map((u) => ({

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { AuditAction, AuctionStatus } from "@prisma/client";
 
-import { requireAdmin } from "@/src/lib/auth";
+import { isAuthorizationError, requireActionPermission } from "@/src/lib/authorization";
 import { prisma } from "@/src/lib/prisma";
 import { createAdminAuditLog } from "@/src/lib/audit";
 import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
@@ -33,7 +33,10 @@ export type AdminAuction = {
 };
 
 export async function listAdminAuctions() {
-  await requireAdmin();
+  const actor = await requireActionPermission("auctions.read.all");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
 
   try {
     await finalizeExpiredAuctions(prisma, 100);
@@ -100,7 +103,10 @@ export async function adminMarkAuctionPaid(auctionId: string) {
     throw new Error("Invalid auction ID");
   }
 
-  const user = await requireAdmin();
+  const user = await requireActionPermission("payments.mark_paid");
+  if (isAuthorizationError(user)) {
+    throw new Error(user.message);
+  }
 
   try {
     const auction = await prisma.auction.findUnique({
@@ -177,7 +183,10 @@ export async function adminCancelAuction(auctionId: string, reason?: string) {
     throw new Error("Invalid auction ID");
   }
 
-  const user = await requireAdmin();
+  const user = await requireActionPermission("auctions.cancel.any");
+  if (isAuthorizationError(user)) {
+    throw new Error(user.message);
+  }
 
   if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
     throw new Error("Vui lòng nhập lý do huỷ phiên (ít nhất 5 ký tự)");

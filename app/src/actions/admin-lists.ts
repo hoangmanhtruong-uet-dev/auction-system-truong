@@ -2,11 +2,14 @@
 
 import { AuctionStatus } from "@prisma/client";
 
-import { requireAdmin } from "@/src/lib/auth";
+import { isAuthorizationError, requireActionPermission } from "@/src/lib/authorization";
 import { prisma } from "@/src/lib/prisma";
 
 export async function listAdminBids() {
-  await requireAdmin();
+  const actor = await requireActionPermission("bids.read.all");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
 
   const bids = await prisma.bid.findMany({
     where: { deletedAt: null },
@@ -47,7 +50,10 @@ export async function listAdminBids() {
 }
 
 export async function listAdminPayments(filter: "all" | "paid" | "unpaid" = "all") {
-  await requireAdmin();
+  const actor = await requireActionPermission("payments.read.all");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
 
   const paidAtWhere =
     filter === "paid" ? { not: null } : filter === "unpaid" ? null : undefined;
@@ -86,7 +92,10 @@ export async function listAdminPayments(filter: "all" | "paid" | "unpaid" = "all
 }
 
 export async function listAdminAuditLogs() {
-  await requireAdmin();
+  const actor = await requireActionPermission("audit_logs.read");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
 
   const logs = await prisma.auditLog.findMany({
     orderBy: { createdAt: "desc" },
@@ -127,7 +136,10 @@ export async function listAdminAuditLogs() {
 }
 
 export async function listAdminNotifications() {
-  await requireAdmin();
+  const actor = await requireActionPermission("notifications.read.self");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
 
   const notifications = await prisma.notification.findMany({
     orderBy: { createdAt: "desc" },

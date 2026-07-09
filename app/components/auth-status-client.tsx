@@ -16,7 +16,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { logout } from "@/src/actions/auth";
 import { toast } from "sonner";
-
 type User = {
   id: string;
   email: string;
@@ -25,6 +24,14 @@ type User = {
   role: string;
   avatarUrl: string | null;
 };
+
+/**
+ * Client-side hint — only show admin nav link for ADMIN/SUPER_ADMIN.
+ * Server-side guard in admin/layout.tsx enforces this via DB.
+ */
+function canOpenAdmin(role: string) {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
 
 export function AuthStatusClient() {
   const router = useRouter();
@@ -112,7 +119,7 @@ export function AuthStatusClient() {
             Hồ sơ
           </Link>
         </DropdownMenuItem>
-        {user.role === "ADMIN" && (
+        {canOpenAdmin(user.role) && (
           <DropdownMenuItem asChild>
             <Link href="/admin">
               <Settings className="mr-2 h-4 w-4" />

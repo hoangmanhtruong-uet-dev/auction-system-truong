@@ -64,7 +64,11 @@ import { toast } from "sonner";
 const ROLE_LABELS: Record<UserRole, string> = {
   USER: "Người dùng",
   SELLER: "Người bán",
+  SUPPORT: "Hỗ trợ",
+  MODERATOR: "Điều phối viên",
+  FINANCE: "Tài chính",
   ADMIN: "Quản trị viên",
+  SUPER_ADMIN: "Quản trị tối cao",
 };
 
 const AUCTION_STATUS_LABELS: Record<AuctionStatus, string> = {

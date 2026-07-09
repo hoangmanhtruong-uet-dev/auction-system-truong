@@ -5,9 +5,14 @@ import { z } from "zod";
 
 import { AuditAction, UserRole } from "@prisma/client";
 
-import { requireRole } from "@/src/lib/authorization";
-import { prisma } from "@/src/lib/prisma";
+import {
+  ROLE_RANK,
+  assertCanManageUserRole,
+  isAuthorizationError,
+  requireActionPermission,
+} from "@/src/lib/authorization";
 import { createAdminAuditLog } from "@/src/lib/audit";
+import { prisma } from "@/src/lib/prisma";
 
 const AdminUserListSchema = z.object({
   take: z.number().int().positive().optional().default(50),
@@ -15,8 +20,8 @@ const AdminUserListSchema = z.object({
 });
 
 export async function getAdminUsers(input?: { take?: number; cursor?: string }) {
-  const admin = await requireRole([UserRole.ADMIN]);
-  if (!("id" in admin)) {
+  const admin = await requireActionPermission("users.read.all");
+  if (isAuthorizationError(admin)) {
     throw new Error(admin.message);
   }
 
@@ -61,14 +66,14 @@ export async function getAdminUsers(input?: { take?: number; cursor?: string }) 
     };
   } catch (error) {
     console.error("Failed to fetch admin users:", error);
-    throw new Error("Không thể tải danh sách người dùng");
+    throw new Error("Khong the tai danh sach nguoi dung");
   }
 }
 
 export async function toggleUserBlock(userId: string, block: boolean, reason?: string) {
-  const user = await requireRole([UserRole.ADMIN]);
-  if (!("id" in user)) {
-    throw new Error(user.message);
+  const actor = await requireActionPermission("users.suspend");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
   }
 
   if (!userId || typeof userId !== "string") {
@@ -76,7 +81,7 @@ export async function toggleUserBlock(userId: string, block: boolean, reason?: s
   }
 
   if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
-    throw new Error("Vui lòng nhập lý do hợp lệ cho thao tác quản trị (ít nhất 5 ký tự)");
+    throw new Error("Vui long nhap ly do hop le cho thao tac quan tri (it nhat 5 ky tu)");
   }
 
   try {
@@ -85,7 +90,15 @@ export async function toggleUserBlock(userId: string, block: boolean, reason?: s
     });
 
     if (!profile) {
-      throw new Error("Người dùng không tồn tại");
+      throw new Error("Nguoi dung khong ton tai");
+    }
+
+    if (profile.id === actor.id) {
+      throw new Error("Khong the khoa chinh minh.");
+    }
+
+    if (ROLE_RANK[profile.role] >= ROLE_RANK[actor.role] && actor.role !== UserRole.SUPER_ADMIN) {
+      throw new Error("Khong the khoa tai khoan co vai tro ngang hoac cao hon ban.");
     }
 
     const previousStatus = profile.deletedAt ? "BLOCKED" : "ACTIVE";
@@ -105,9 +118,8 @@ export async function toggleUserBlock(userId: string, block: boolean, reason?: s
       },
     });
 
-    // Create admin audit log with reason
     await createAdminAuditLog({
-      profileId: user.id,
+      profileId: actor.id,
       action: AuditAction.ADMIN_ACTION,
       resourceType: "profile",
       resourceId: profile.id,
@@ -134,6 +146,95 @@ export async function toggleUserBlock(userId: string, block: boolean, reason?: s
     if (error instanceof Error) {
       throw error;
     }
-    throw new Error("Không thể thực hiện thao tác");
+    throw new Error("Khong the thuc hien thao tac");
+  }
+}
+
+export async function updateUserRole(userId: string, nextRole: UserRole, reason?: string) {
+  const actor = await requireActionPermission("users.update.role");
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
+
+  if (!userId || typeof userId !== "string") {
+    throw new Error("Invalid user ID");
+  }
+
+  if (!Object.values(UserRole).includes(nextRole)) {
+    throw new Error("Vai tro khong hop le");
+  }
+
+  if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
+    throw new Error("Vui long nhap ly do hop le cho thao tac doi vai tro (it nhat 5 ky tu)");
+  }
+
+  try {
+    const target = await prisma.profile.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!target) {
+      throw new Error("Nguoi dung khong ton tai");
+    }
+
+    const roleCheck = assertCanManageUserRole({
+      actor,
+      target,
+      nextRole,
+    });
+
+    if (roleCheck !== true) {
+      throw new Error(roleCheck.message);
+    }
+
+    const updatedProfile = await prisma.profile.update({
+      where: { id: userId },
+      data: { role: nextRole },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    await createAdminAuditLog({
+      profileId: actor.id,
+      action: AuditAction.ADMIN_ACTION,
+      resourceType: "profile",
+      resourceId: target.id,
+      oldValues: {
+        role: target.role,
+      },
+      newValues: {
+        operation: "USER_ROLE_UPDATED",
+        role: updatedProfile.role,
+        adminReason: reason.trim(),
+      },
+    });
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin");
+
+    return {
+      success: true,
+      user: updatedProfile,
+    };
+  } catch (error) {
+    console.error("Failed to update user role:", error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Khong the doi vai tro nguoi dung");
   }
 }

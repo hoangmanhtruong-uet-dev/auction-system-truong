@@ -6,7 +6,7 @@ import { getJwtSecret } from "@/src/lib/jwt";
 import { UserRole } from "@prisma/client";
 
 export const AUTH_COOKIE_NAME = "auth-token";
-export const PRIMARY_ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "admin@autobid.vn";
+export const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() || "admin@autobid.vn";
 
 export type SafeUser = {
   id: string;
@@ -26,7 +26,7 @@ export type SafeUser = {
 };
 
 export function isPrimaryAdmin(user: Pick<SafeUser, "email" | "role">) {
-  return user.role === UserRole.ADMIN && user.email.toLowerCase() === PRIMARY_ADMIN_EMAIL;
+  return user.role === UserRole.SUPER_ADMIN && user.email.toLowerCase() === SUPER_ADMIN_EMAIL;
 }
 
 export async function getSessionUserId(): Promise<string | null> {
@@ -88,7 +88,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         return null;
       }
 
-      if (profile.role !== UserRole.ADMIN && payload?.sessionVersion !== profile.sessionVersion) {
+      if (payload?.sessionVersion !== profile.sessionVersion) {
         return null;
       }
 
@@ -131,7 +131,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         return null;
       }
 
-      if (profile.role !== UserRole.ADMIN && payload?.sessionVersion !== profile.sessionVersion) {
+      if (payload?.sessionVersion !== profile.sessionVersion) {
         return null;
       }
 
@@ -185,31 +185,3 @@ export async function requireAuth(): Promise<SafeUser> {
   return user;
 }
 
-/**
- * Require a specific role. Redirects to home if not authorized.
- */
-export async function requireRole(allowedRoles: UserRole[]): Promise<SafeUser> {
-  const user = await requireAuth();
-  if (!allowedRoles.includes(user.role)) {
-    redirect("/");
-  }
-  return user;
-}
-
-/**
- * Require ADMIN role.
- */
-export async function requireAdmin(): Promise<SafeUser> {
-  const user = await requireRole([UserRole.ADMIN]);
-  if (!isPrimaryAdmin(user)) {
-    redirect("/");
-  }
-  return user;
-}
-
-/**
- * Require SELLER role (or higher).
- */
-export async function requireSeller(): Promise<SafeUser> {
-  return requireRole([UserRole.SELLER, UserRole.ADMIN]);
-}

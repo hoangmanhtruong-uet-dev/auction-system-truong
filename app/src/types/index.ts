@@ -103,6 +103,7 @@ export const PlaceBidSchema = z.object({
   expectedCurrentPrice: z.string().regex(/^\d+$/, "Giá hiện tại không hợp lệ").optional(),
   isAutoBid: z.boolean().default(false),
   autoBidMaxPrice: z.number().int("Giá tự động tối đa phải là số nguyên").positive("Giá tự động tối đa phải lớn hơn 0").optional(),
+  idempotencyKey: z.string().min(1, "Mã idempotency không hợp lệ").max(64).optional(),
 });
 
 export type PlaceBidInput = z.infer<typeof PlaceBidSchema>;

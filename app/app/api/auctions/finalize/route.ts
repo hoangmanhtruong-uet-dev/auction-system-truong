@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireCronSecret } from "@/src/lib/api-authorization";
 import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function isAuthorized(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return true;
-  }
-
-  const authHeader = request.headers.get("authorization");
-  return authHeader === `Bearer ${secret}`;
-}
-
 async function finalize(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const cronGuard = requireCronSecret(request);
+  if (cronGuard) {
+    return cronGuard;
   }
 
   const result = await finalizeExpiredAuctions();

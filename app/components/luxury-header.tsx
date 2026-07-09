@@ -19,7 +19,7 @@ export function LuxuryHeader() {
 
   const isAuthPage = pathname.startsWith("/auth");
   const isHomepage = pathname === "/";
-  const isDashboardPage = pathname.startsWith("/auctions") || pathname.startsWith("/products") || pathname.startsWith("/profile") || pathname.startsWith("/admin");
+  const isDashboardPage = pathname.startsWith("/auctions") || pathname.startsWith("/products") || pathname.startsWith("/inventory") || pathname.startsWith("/profile") || pathname.startsWith("/admin");
 
   if (isAuthPage) {
     return (

@@ -20,7 +20,6 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_LIMIT = 10;
 const REGISTER_RATE_LIMIT = 5;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "admin@autobid.vn";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -206,16 +205,10 @@ export async function login(data: LoginInput) {
       };
     }
 
-    if (profile.role === UserRole.ADMIN && profile.email !== ADMIN_EMAIL) {
-      return {
-        success: false,
-        error: { _errors: ["Tài khoản admin không hợp lệ."] },
-      };
-    }
-
-    // Update session version for non-admin users
+    // Increment only on non-admin login. Admin roles can keep multiple devices active,
+    // but password changes / explicit logout-all still revoke old admin sessions.
     const updatedProfile =
-      profile.role === UserRole.ADMIN
+      profile.role === UserRole.ADMIN || profile.role === UserRole.SUPER_ADMIN
         ? profile
         : await prisma.profile.update({
             where: { id: profile.id },

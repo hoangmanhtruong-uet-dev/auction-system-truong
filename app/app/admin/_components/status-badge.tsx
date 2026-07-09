@@ -1,27 +1,31 @@
-import { AuctionStatus, BidStatus, UserRole } from "@prisma/client";
+import type { AuctionStatus, BidStatus, UserRole } from "@prisma/client";
 import { CheckCircle2, Clock, MinusCircle, Shield, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const auctionLabels: Record<AuctionStatus, string> = {
-  PENDING: "Chờ mở",
-  ACTIVE: "Đang chạy",
-  COMPLETED: "Hoàn tất",
-  CANCELLED: "Đã hủy",
+  PENDING: "Cho mo",
+  ACTIVE: "Dang chay",
+  COMPLETED: "Hoan tat",
+  CANCELLED: "Da huy",
 };
 
 const bidLabels: Record<BidStatus, string> = {
-  ACTIVE: "Đang giữ",
-  WON: "Thắng",
+  ACTIVE: "Dang giu",
+  WON: "Thang",
   LOST: "Thua",
-  CANCELLED: "Đã hủy",
+  CANCELLED: "Da huy",
 };
 
 const roleLabels: Record<UserRole, string> = {
   USER: "User",
   SELLER: "Seller",
+  SUPPORT: "Support",
+  MODERATOR: "Moderator",
+  FINANCE: "Finance",
   ADMIN: "Admin",
+  SUPER_ADMIN: "Super Admin",
 };
 
 const styles = {
@@ -69,27 +73,27 @@ export function StatusBadge({
   if (type === "role") {
     const role = value as UserRole;
     label = roleLabels[role] ?? role;
-    style = role === "ADMIN" ? styles.warning : role === "SELLER" ? styles.info : styles.neutral;
+    style = role === "ADMIN" || role === "SUPER_ADMIN" ? styles.warning : role === "SELLER" || role === "FINANCE" ? styles.info : styles.neutral;
     Icon = Shield;
   }
 
   if (type === "payment") {
     const paid = Boolean(value);
-    label = paid ? "Đã thanh toán" : "Chưa thanh toán";
+    label = paid ? "Da thanh toan" : "Chua thanh toan";
     style = paid ? styles.success : styles.warning;
     Icon = paid ? CheckCircle2 : Clock;
   }
 
   if (type === "user") {
     const blocked = Boolean(value);
-    label = blocked ? "Bị khóa" : "Hoạt động";
+    label = blocked ? "Bi khoa" : "Hoat dong";
     style = blocked ? styles.danger : styles.success;
     Icon = blocked ? XCircle : CheckCircle2;
   }
 
   if (type === "autoBid") {
     const auto = Boolean(value);
-    label = auto ? "Auto-bid cũ" : "Manual";
+    label = auto ? "Auto-bid cu" : "Manual";
     style = auto ? styles.warning : styles.neutral;
     Icon = auto ? Clock : CheckCircle2;
   }

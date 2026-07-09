@@ -20,9 +20,13 @@
 ### UserRole
 | Value | Description |
 |---|---|
-| `USER` | Regular bidder |
-| `SELLER` | Can create auctions |
-| `ADMIN` | System admin |
+| `USER` | Regular bidder; can manage own profile, bids, watchlist, notifications |
+| `SELLER` | Seller account; includes bidder permissions plus own auction create/update/delete/cancel |
+| `SUPPORT` | Support staff; read-only operational visibility for users, auctions, bids, audit logs |
+| `MODERATOR` | Moderation staff; support permissions plus auction moderation and user suspend/verify |
+| `FINANCE` | Finance staff; support permissions plus payment read/mark-paid |
+| `ADMIN` | Operational admin; moderator + finance + role/settings management |
+| `SUPER_ADMIN` | Break-glass admin; admin permissions plus permission model management |
 
 ### AuctionStatus
 | Value | Description |

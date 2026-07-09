@@ -10,7 +10,11 @@ datasource db {
 enum UserRole {
   USER
   SELLER
+  SUPPORT
+  MODERATOR
+  FINANCE
   ADMIN
+  SUPER_ADMIN
 
   @@map("user_role")
 }
@@ -52,7 +56,6 @@ enum AuditAction {
   PROFILE_CREATED
   PROFILE_UPDATED
   AUCTION_CREATED
-  AUCTION_UPDATED
   AUCTION_ACTIVATED
   AUCTION_CANCELLED
   AUCTION_COMPLETED
@@ -64,6 +67,30 @@ enum AuditAction {
   ADMIN_ACTION
 
   @@map("audit_action")
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  BID_FREEZE
+  BID_UNFREEZE
+  SETTLEMENT_DEBIT
+  PLATFORM_FEE
+  SELLER_PAYOUT
+  REFUND
+  PENALTY
+  ADMIN_ADJUSTMENT
+
+  @@map("transaction_type")
+}
+
+enum FreezeStatus {
+  ACTIVE
+  RELEASED
+  SETTLED
+  FORFEITED
+
+  @@map("freeze_status")
 }
 
 model Profile {
@@ -93,10 +120,71 @@ model Profile {
   auditLogs               AuditLog[]
   userPreference          UserPreference?
   emailVerificationTokens EmailVerificationToken[]
+  wallet                  Wallet?
 
   @@index([email], map: "idx_profiles_email")
   @@index([role], map: "idx_profiles_role")
   @@map("profiles")
+}
+
+model Wallet {
+  id          String   @id @default(uuid()) @db.Char(36)
+  profileId   String   @unique @map("profile_id") @db.Char(36)
+  balance     BigInt   @default(0)
+  totalFrozen BigInt   @default(0) @map("total_frozen")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(6)
+
+  profile      Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+  freezes      BalanceFreeze[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            String          @id @default(uuid()) @db.Char(36)
+  walletId      String          @map("wallet_id") @db.Char(36)
+  type          TransactionType
+  amount        BigInt
+  balanceBefore BigInt          @map("balance_before")
+  balanceAfter  BigInt          @map("balance_after")
+  referenceType String?         @map("reference_type") @db.VarChar(50)
+  referenceId   String?         @map("reference_id") @db.Char(36)
+  description   String          @db.Text
+  status        String          @default("COMPLETED") @db.VarChar(20)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.DateTime(6)
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt], map: "idx_wallet_tx_wallet_id_created_at")
+  @@index([referenceType, referenceId], map: "idx_wallet_tx_reference")
+  @@index([type], map: "idx_wallet_tx_type")
+  @@index([createdAt], map: "idx_wallet_tx_created_at")
+  @@map("wallet_transactions")
+}
+
+model BalanceFreeze {
+  id         String       @id @default(uuid()) @db.Char(36)
+  walletId   String       @map("wallet_id") @db.Char(36)
+  auctionId  String       @map("auction_id") @db.Char(36)
+  bidId      String?      @map("bid_id") @db.Char(36)
+  amount     BigInt
+  status     FreezeStatus @default(ACTIVE)
+  reason     String?      @db.VarChar(100)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt  DateTime     @updatedAt @map("updated_at") @db.DateTime(6)
+  releasedAt DateTime?    @map("released_at") @db.DateTime(6)
+
+  wallet  Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bid     Bid?    @relation(fields: [bidId], references: [id], onDelete: SetNull)
+
+  @@index([walletId, status], map: "idx_balance_freeze_wallet_id_status")
+  @@index([auctionId, status], map: "idx_balance_freeze_auction_id_status")
+  @@index([walletId, auctionId, status], map: "idx_balance_freeze_wallet_auction_status")
+  @@map("balance_freezes")
 }
 
 model Auction {
@@ -119,6 +207,7 @@ model Auction {
   endsAt                DateTime?     @map("ends_at") @db.DateTime(6)
   paidAt                DateTime?     @map("paid_at") @db.DateTime(6)
   paidById              String?       @map("paid_by_id") @db.Char(36)
+  payByDeadline         DateTime?     @map("pay_by_deadline") @db.DateTime(6)
   canceledAt            DateTime?     @map("canceled_at") @db.DateTime(6)
   canceledById          String?       @map("canceled_by_id") @db.Char(36)
   cancelReason          String?       @map("cancel_reason") @db.Text
@@ -133,6 +222,7 @@ model Auction {
   bids           Bid[]
   watchlistItems Watchlist[]
   notifications  Notification[]
+  balanceFreezes BalanceFreeze[]
 
   @@index([status, endsAt], map: "idx_auctions_status_ends_at")
   @@index([status, startsAt, endsAt], map: "idx_auctions_status_starts_at_ends_at")
@@ -162,13 +252,15 @@ model Bid {
   amount          BigInt
   isAutoBid       Boolean   @default(false) @map("is_auto_bid")
   autoBidMaxPrice BigInt?   @map("auto_bid_max_price")
+  idempotencyKey  String?   @map("idempotency_key") @db.VarChar(64)
   status          BidStatus @default(ACTIVE)
   createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(6)
   deletedAt       DateTime? @map("deleted_at") @db.DateTime(6)
 
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-  bidder  Profile @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  auction      Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder       Profile        @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  balanceFreezes BalanceFreeze[]
 
   @@index([auctionId, amount], map: "idx_bids_auction_id_amount")
   @@index([auctionId, status, amount], map: "idx_bids_auction_id_status_amount")
@@ -265,4 +357,3 @@ model UserPreference {
   @@index([profileId], map: "idx_user_preferences_profile_id")
   @@map("user_preferences")
 }
-

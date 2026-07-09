@@ -2,7 +2,7 @@
 
 import { AuctionStatus } from "@prisma/client";
 
-import { requireAdmin } from "@/src/lib/auth";
+import { isAuthorizationError, requireAdminAreaAccess } from "@/src/lib/authorization";
 import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
 import { prisma } from "@/src/lib/prisma";
 
@@ -44,7 +44,10 @@ export type AdminDashboardData = {
 };
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
-  await requireAdmin();
+  const actor = await requireAdminAreaAccess();
+  if (isAuthorizationError(actor)) {
+    throw new Error(actor.message);
+  }
   await finalizeExpiredAuctions(prisma, 100);
 
   const now = new Date();

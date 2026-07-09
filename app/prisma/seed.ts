@@ -52,11 +52,11 @@ async function main() {
   console.log('Starting seed...');
 
   const admin = await upsertProfile({
-    email: 'admin@autobid.vn',
+    email: process.env.SUPER_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'admin@autobid.vn',
     emailVerified: true,
     fullName: 'Admin System',
     phone: '0900000000',
-    role: UserRole.ADMIN,
+    role: UserRole.SUPER_ADMIN,
     createdAt: new Date('2026-01-01T00:00:00Z'),
   });
 

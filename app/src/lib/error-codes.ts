@@ -83,6 +83,27 @@ export type AppErrorCode =
   | "CANNOT_BLOCK_ADMIN"
   | "INVALID_USER_ROLE"
 
+  // Forfeit
+  | "INVALID_STATUS"
+  | "NO_WINNER"
+  | "ALREADY_PAID"
+
+  // Financial
+  | "INSUFFICIENT_BALANCE"
+  | "WALLET_NOT_FOUND"
+  | "FROZEN_AMOUNT_EXCEEDS_BALANCE"
+  | "FREEZE_NOT_FOUND"
+  | "FREEZE_ALREADY_RELEASED"
+  | "FREEZE_ALREADY_FORFEITED"
+  | "FREEZE_ALREADY_SETTLED"
+  | "SETTLEMENT_FAILED"
+  | "PLATFORM_FEE_FAILED"
+  | "SELLER_PAYOUT_FAILED"
+  | "REFUND_FAILED"
+  | "RECONCILIATION_MISMATCH"
+  | "SETTLEMENT_CONFIG_ERROR"
+  | "DUPLICATE_SETTLEMENT"
+
   // Realtime / Data freshness
   | "REALTIME_DISCONNECTED"
   | "STALE_DATA"
@@ -264,6 +285,27 @@ export const DEFAULT_ERROR_MESSAGES: Record<AppErrorCode, string> = {
   CANNOT_BLOCK_SELF: "Bạn không thể khóa chính mình.",
   CANNOT_BLOCK_ADMIN: "Bạn không thể khóa tài khoản quản trị viên.",
   INVALID_USER_ROLE: "Vai trò người dùng không hợp lệ.",
+
+  // Forfeit
+  INVALID_STATUS: "Trạng thái không hợp lệ để thực hiện thao tác này.",
+  NO_WINNER: "Không có người thắng cuộc.",
+  ALREADY_PAID: "Phiên đấu giá đã được thanh toán.",
+
+  // Financial / Wallet
+  INSUFFICIENT_BALANCE: "Số dư không đủ để thực hiện giao dịch.",
+  WALLET_NOT_FOUND: "Ví không tồn tại.",
+  FROZEN_AMOUNT_EXCEEDS_BALANCE: "Số tiền khóa vượt quá số dư hiện tại.",
+  FREEZE_NOT_FOUND: "Không tìm thấy lệnh khóa tiền.",
+  FREEZE_ALREADY_RELEASED: "Lệnh khóa tiền đã được giải phóng.",
+  FREEZE_ALREADY_FORFEITED: "Lệnh khóa tiền đã bị phạt.",
+  FREEZE_ALREADY_SETTLED: "Lệnh khóa tiền đã được thanh toán.",
+  SETTLEMENT_FAILED: "Không thể thanh toán phiên đấu giá.",
+  PLATFORM_FEE_FAILED: "Không thể thu phí sàn.",
+  SELLER_PAYOUT_FAILED: "Không thể chuyển tiền cho người bán.",
+  REFUND_FAILED: "Không thể hoàn tiền.",
+  RECONCILIATION_MISMATCH: "Đối soát tài chính phát hiện sai lệch.",
+  SETTLEMENT_CONFIG_ERROR: "Hệ thống chưa được cấu hình tài khoản quản trị để nhận phí sàn.",
+  DUPLICATE_SETTLEMENT: "Phiên đấu giá đã được thanh toán trước đó.",
 
   // Realtime / Data freshness
   REALTIME_DISCONNECTED: "Mất kết nối realtime. Dữ liệu đang được cập nhật định kỳ.",

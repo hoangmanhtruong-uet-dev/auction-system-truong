@@ -11,6 +11,14 @@ import { Label } from "@/components/ui/label";
 import { login } from "@/src/actions/auth";
 import { toast } from "sonner";
 
+/**
+ * Client-side hint — only show admin nav link for ADMIN/SUPER_ADMIN.
+ * Server-side guard in admin/layout.tsx enforces this via DB.
+ */
+function canOpenAdmin(role: string) {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,7 +52,7 @@ function LoginForm() {
 
       toast.success("Đăng nhập thành công!");
       router.refresh();
-      router.replace(result.data!.role === "ADMIN" ? "/admin" : redirectTo);
+      router.replace(canOpenAdmin(result.data!.role) ? "/admin" : redirectTo);
     } catch (err) {
       console.error("Login submit error:", err);
       const errorMsg = "Không thể đăng nhập. Vui lòng thử lại.";
