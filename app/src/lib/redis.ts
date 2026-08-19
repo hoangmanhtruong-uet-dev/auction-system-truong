@@ -14,10 +14,12 @@ function registry(): RedisRegistry {
 }
 
 function redisUrl(role: RedisRole): string {
-  if (role === "read") {
-    return process.env.REDIS_READ_URL ?? process.env.REDIS_URL ?? "redis://localhost:6379";
-  }
-  return process.env.REDIS_URL ?? "redis://localhost:6379";
+  const raw = role === "read"
+    ? process.env.REDIS_READ_URL ?? process.env.REDIS_URL
+    : process.env.REDIS_URL;
+  if (!raw) return "redis://localhost:6379";
+  const cleaned = raw.trim().replace(/^["']|["']$/g, "").trim();
+  return cleaned.length > 0 ? cleaned : "redis://localhost:6379";
 }
 
 function options(role: RedisRole): RedisOptions {
