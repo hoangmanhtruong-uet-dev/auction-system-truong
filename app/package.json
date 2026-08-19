@@ -11,8 +11,8 @@
     "test:integration": "node scripts/verify-integration-env.mjs && prisma migrate deploy --schema=prisma/schema.prisma && tsx --test --test-concurrency=1 src/__tests__/*.integration.test.ts",
     "test:all": "npm run lint && npm run typecheck && npm test && npm run test:security && npm run test:integration && npm run build",
     "build": "prisma generate --schema=prisma/schema.prisma && next build",
-    "start": "next start",
-    "start:web": "next start",
+    "start": "node -e \"const fs=require('fs'),{spawn}=require('child_process');const p='.next/standalone/server.js';const c=fs.existsSync(p)?[process.execPath,p]:require.resolve('next/dist/bin/next').includes(' ')?['npx','next','start']:['node',require.resolve('next/dist/bin/next'),'start'];const s=c[0]==='npx'?spawn(c[0],c.slice(1),{stdio:'inherit',shell:process.platform==='win32'}):spawn(c[0],c.slice(1),{stdio:'inherit'});s.on('exit',x=>process.exit(x??0));s.on('error',e=>{console.error(e);process.exit(1)})\"",
+    "start:web": "node -e \"const fs=require('fs'),{spawn}=require('child_process');const p='.next/standalone/server.js';const c=fs.existsSync(p)?[process.execPath,p]:require.resolve('next/dist/bin/next').includes(' ')?['npx','next','start']:['node',require.resolve('next/dist/bin/next'),'start'];const s=c[0]==='npx'?spawn(c[0],c.slice(1),{stdio:'inherit',shell:process.platform==='win32'}):spawn(c[0],c.slice(1),{stdio:'inherit'});s.on('exit',x=>process.exit(x??0));s.on('error',e=>{console.error(e);process.exit(1)})\"",
     "start:worker": "tsx src/workers/index.ts",
     "prisma:validate": "prisma validate --schema=prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma"

@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { requireAuth as requireBaseAuth } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import { getCanonicalAppOrigin } from "@/src/lib/env";
 import { ActionResult } from "@/src/types";
 import { assertSameOrigin } from "@/src/lib/security-request";
 import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
@@ -52,7 +53,8 @@ function hashToken(token: string): string {
 
 // Send verification email
 async function sendVerificationEmail(email: string, token: string, fullName: string): Promise<void> {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`;
+  const origin = getCanonicalAppOrigin() ?? "";
+  const verificationUrl = `${origin}/verify-email?token=${token}`;
 
   await getTransporter().sendMail({
     from: `"Auction System" <${process.env.SMTP_FROM}>`,

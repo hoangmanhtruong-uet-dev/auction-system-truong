@@ -1,17 +1,3 @@
-/**
- * Redis Pub/Sub – Kênh broadcast giữa các Server
- *
- * Khi Server A nhận bid thành công → publish vào kênh Redis.
- * Server B, C, D đang subscribe → nhận message → đẩy xuống Client WebSocket.
- *
- * WARNING: Redis Pub/Sub is fire-and-forget (non-durable).
- * Messages are not persisted, so clients must refetch their state upon reconnection
- * to sync any missed events.
- *
- * ponytail: Dùng Redis Pub/Sub cơ bản. Khi cần message persistence
- *   hoặc replay, chuyển sang Redis Streams hoặc Kafka.
- */
-
 import { redis, redisSub, Keys } from "@/src/lib/redis";
 
 export type BidEvent = {
@@ -31,18 +17,41 @@ export type AuctionEvent =
   | { type: "AUCTION_ENDED"; payload: { auctionId: string; winnerId: string | null; finalPrice: string } }
   | { type: "AUCTION_EXTENDED"; payload: { auctionId: string; newEndsAt: string } };
 
-/**
- * Publish sự kiện bid mới đến tất cả server đang subscribe.
- */
+type InMemoryListener = (event: AuctionEvent) => void;
+type InMemoryPatternListener = (auctionId: string, event: AuctionEvent) => void;
+
+const inMemoryChannelListeners = new Map<string, Set<InMemoryListener>>();
+let inMemoryPatternListeners: Set<InMemoryPatternListener> | null = null;
+
+function dispatchInMemory(auctionId: string, event: AuctionEvent) {
+  const channel = Keys.bidChannel(auctionId);
+  const listeners = inMemoryChannelListeners.get(channel);
+  if (listeners) {
+    for (const l of listeners) {
+      try { l(event); } catch (e) { console.error("[PubSub] In-memory listener error:", e); }
+    }
+  }
+  if (inMemoryPatternListeners) {
+    for (const l of inMemoryPatternListeners) {
+      try { l(auctionId, event); } catch (e) { console.error("[PubSub] In-memory pattern listener error:", e); }
+    }
+  }
+}
+
 export async function publishBidEvent(event: BidEvent): Promise<void> {
   const channel = Keys.bidChannel(event.auctionId);
   const message: AuctionEvent = { type: "BID_PLACED", payload: event };
-  await redis.publish(channel, JSON.stringify(message));
+  const serialized = JSON.stringify(message);
+
+  try {
+    await redis.publish(channel, serialized);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "pubsub_publish_redis_failed", channel, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  dispatchInMemory(event.auctionId, message);
 }
 
-/**
- * Publish sự kiện auction kết thúc.
- */
 export async function publishAuctionEnded(
   auctionId: string,
   winnerId: string | null,
@@ -53,13 +62,17 @@ export async function publishAuctionEnded(
     type: "AUCTION_ENDED",
     payload: { auctionId, winnerId, finalPrice },
   };
-  await redis.publish(channel, JSON.stringify(message));
+  const serialized = JSON.stringify(message);
+
+  try {
+    await redis.publish(channel, serialized);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "pubsub_publish_redis_failed", channel, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  dispatchInMemory(auctionId, message);
 }
 
-/**
- * Subscribe vào kênh bid của một phiên đấu giá.
- * Trả về hàm unsubscribe.
- */
 export async function subscribeToBids(
   auctionId: string,
   handler: (event: AuctionEvent) => void,
@@ -75,25 +88,34 @@ export async function subscribeToBids(
     }
   };
 
-  redisSub.on("message", listener);
-  await redisSub.subscribe(channel);
+  try {
+    redisSub.on("message", listener);
+    await redisSub.subscribe(channel);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "pubsub_subscribe_redis_failed", channel, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  const memListeners = inMemoryChannelListeners.get(channel) ?? new Set<InMemoryListener>();
+  memListeners.add(handler);
+  inMemoryChannelListeners.set(channel, memListeners);
 
   return async () => {
-    await redisSub.unsubscribe(channel);
-    redisSub.off("message", listener);
+    try {
+      await redisSub.unsubscribe(channel);
+      redisSub.off("message", listener);
+    } catch {
+    }
+    memListeners.delete(handler);
+    if (memListeners.size === 0) inMemoryChannelListeners.delete(channel);
   };
 }
 
-/**
- * Subscribe tất cả kênh bid (pattern subscribe).
- * Dùng cho WebSocket gateway server để fan-out tới clients.
- */
 export async function subscribeAllBids(
   handler: (auctionId: string, event: AuctionEvent) => void,
 ): Promise<() => Promise<void>> {
   const pattern = "channel:bid:*";
 
-  const listener = (_pattern: string, channel: string, message: string) => {
+  const pListener = (_pattern: string, channel: string, message: string) => {
     try {
       const auctionId = channel.replace("channel:bid:", "");
       const event = JSON.parse(message) as AuctionEvent;
@@ -103,11 +125,23 @@ export async function subscribeAllBids(
     }
   };
 
-  redisSub.on("pmessage", listener);
-  await redisSub.psubscribe(pattern);
+  try {
+    redisSub.on("pmessage", pListener);
+    await redisSub.psubscribe(pattern);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "pubsub_psubscribe_redis_failed", pattern, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  inMemoryPatternListeners ??= new Set();
+  inMemoryPatternListeners.add(handler);
 
   return async () => {
-    await redisSub.punsubscribe(pattern);
-    redisSub.off("pmessage", listener);
+    try {
+      await redisSub.punsubscribe(pattern);
+      redisSub.off("pmessage", pListener);
+    } catch {
+    }
+    inMemoryPatternListeners?.delete(handler);
+    if (inMemoryPatternListeners?.size === 0) inMemoryPatternListeners = null;
   };
 }

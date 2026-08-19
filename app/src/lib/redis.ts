@@ -8,18 +8,30 @@ declare global {
   var __autoBidRedisRegistry: RedisRegistry | undefined;
 }
 
+const connectionErrorState: Partial<Record<RedisRole, { lastLoggedAt: number; consecutive: number }>> = {};
+const ERROR_LOG_DEBOUNCE_MS = 60_000;
+
 function registry(): RedisRegistry {
   globalThis.__autoBidRedisRegistry ??= {};
   return globalThis.__autoBidRedisRegistry;
 }
 
-function redisUrl(role: RedisRole): string {
+export function redisUrl(role: RedisRole): string {
   const raw = role === "read"
     ? process.env.REDIS_READ_URL ?? process.env.REDIS_URL
     : process.env.REDIS_URL;
   if (!raw) return "redis://localhost:6379";
   const cleaned = raw.trim().replace(/^["']|["']$/g, "").trim();
   return cleaned.length > 0 ? cleaned : "redis://localhost:6379";
+}
+
+export function isRedisConfigured(): boolean {
+  const raw = process.env.REDIS_URL;
+  if (!raw) return false;
+  const cleaned = raw.trim().replace(/^["']|["']$/g, "").trim();
+  if (cleaned.length === 0) return false;
+  const lower = cleaned.toLowerCase();
+  return !lower.includes("localhost") && !lower.includes("127.0.0.1") && !lower.includes("::1");
 }
 
 function options(role: RedisRole): RedisOptions {
@@ -34,20 +46,44 @@ function options(role: RedisRole): RedisOptions {
     maxRetriesPerRequest: 3,
     retryStrategy: (attempt) => attempt > maxReconnectAttempts ? null : Math.min(attempt * 100, 3000),
     tls: isTlsScheme || process.env.REDIS_TLS_ENABLED === "true" ? {} : undefined,
+    showFriendlyErrorStack: process.env.NODE_ENV !== "production",
   };
+}
+
+function debouncedErrorLog(role: RedisRole, context: Record<string, unknown>, message: string) {
+  const now = Date.now();
+  const state = connectionErrorState[role] ?? { lastLoggedAt: 0, consecutive: 0 };
+  state.consecutive += 1;
+  if (now - state.lastLoggedAt >= ERROR_LOG_DEBOUNCE_MS) {
+    state.lastLoggedAt = now;
+    const total = state.consecutive;
+    state.consecutive = 0;
+    console.error(JSON.stringify({ ...context, event: "error", message, consecutiveSuppressed: total - 1 }));
+  }
 }
 
 function createConnection(role: RedisRole): Redis {
   const client = new Redis(redisUrl(role), options(role));
   const context = { service: "redis", role };
 
-  client.on("connect", () => console.info(JSON.stringify({ ...context, event: "connect" })));
+  client.on("connect", () => {
+    connectionErrorState[role] = { lastLoggedAt: 0, consecutive: 0 };
+    console.info(JSON.stringify({ ...context, event: "connect" }));
+  });
   client.on("ready", () => console.info(JSON.stringify({ ...context, event: "ready" })));
-  client.on("reconnecting", () => console.warn(JSON.stringify({ ...context, event: "reconnecting" })));
+  client.on("reconnecting", () => {
+    const state = connectionErrorState[role] ?? { lastLoggedAt: 0, consecutive: 0 };
+    state.consecutive += 1;
+    const now = Date.now();
+    if (now - state.lastLoggedAt >= ERROR_LOG_DEBOUNCE_MS) {
+      state.lastLoggedAt = now;
+      const total = state.consecutive;
+      state.consecutive = 0;
+      console.warn(JSON.stringify({ ...context, event: "reconnecting", debouncedCount: total }));
+    }
+  });
   client.on("close", () => console.info(JSON.stringify({ ...context, event: "close" })));
-  client.on("error", (error) =>
-    console.error(JSON.stringify({ ...context, event: "error", message: error.message })),
-  );
+  client.on("error", (error) => debouncedErrorLog(role, context, error.message));
 
   return client;
 }

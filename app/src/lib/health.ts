@@ -11,6 +11,10 @@ export type ReadinessDependencies = {
   worker: () => Promise<void>;
 };
 
+const HARD_DEPENDENCIES: ReadonlySet<keyof ReadinessDependencies> = new Set(["database"]);
+const SOFT_DEPENDENCY_FAILURE_MODE =
+  (process.env.SOFT_DEPENDENCY_FAILURE_MODE ?? "open") === "closed" ? "closed" : "open";
+
 async function timed(name: string, operation: () => Promise<void>, timeoutMs: number): Promise<[string, Check]> {
   const started = Date.now();
   try {
@@ -59,6 +63,20 @@ export async function readiness(dependencies = defaultDependencies(), source: No
     timed("worker", dependencies.worker, timeoutMs),
   ]);
   const checksByName = Object.fromEntries(checks) as Record<string, Check>;
-  const ok = env.ok && checks.every(([, check]) => check.ok);
-  return { ok, dependencies: checksByName, environment: env.ok ? { ok: true } : { ok: false, invalid: env.invalid } };
+
+  const softFailOpen = SOFT_DEPENDENCY_FAILURE_MODE === "open";
+  const allChecksOk = checks.every(([, check]) => check.ok);
+  const hardOnlyOk = checks.every(([name, check]) => HARD_DEPENDENCIES.has(name as keyof ReadinessDependencies) ? check.ok : true);
+  const ok = env.ok && (softFailOpen ? hardOnlyOk : allChecksOk);
+
+  const degraded = Object.keys(checksByName).some(
+    (name) => !HARD_DEPENDENCIES.has(name as keyof ReadinessDependencies) && !checksByName[name].ok,
+  );
+  return {
+    ok,
+    degraded: ok && degraded,
+    softFailureMode: SOFT_DEPENDENCY_FAILURE_MODE,
+    dependencies: checksByName,
+    environment: env.ok ? { ok: true } : { ok: false, invalid: env.invalid },
+  };
 }

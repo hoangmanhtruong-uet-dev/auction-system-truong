@@ -22,11 +22,16 @@ export type CachedAuction = {
   status: string;
 };
 
-const CACHE_TTL_SEC = 3600; // 1 giờ, tự refresh khi có bid mới
+const CACHE_TTL_SEC = 3600;
+const inMemoryCache = new Map<string, { data: CachedAuction; expiresAt: number }>();
 
-/**
- * Nạp thông tin phiên đấu giá vào Redis cache.
- */
+function purgeExpiredInMemory() {
+  const now = Date.now();
+  for (const [key, val] of inMemoryCache) {
+    if (val.expiresAt < now) inMemoryCache.delete(key);
+  }
+}
+
 export async function warmAuction(auction: {
   id: string;
   currentPrice: bigint;
@@ -45,34 +50,48 @@ export async function warmAuction(auction: {
     status: auction.status,
   };
 
-  await redis.set(key, JSON.stringify(data), "EX", CACHE_TTL_SEC);
+  try {
+    await redis.set(key, JSON.stringify(data), "EX", CACHE_TTL_SEC);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "auction_cache_warm_redis_failed", auctionId: auction.id, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  purgeExpiredInMemory();
+  inMemoryCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_SEC * 1000 });
 }
 
-/**
- * Đọc thông tin phiên đấu giá từ Redis. null nếu chưa cache.
- */
 export async function getCachedAuction(auctionId: string): Promise<CachedAuction | null> {
-  const raw = await redisRead.get(Keys.auction(auctionId));
-  if (!raw) return null;
+  const key = Keys.auction(auctionId);
 
   try {
-    return JSON.parse(raw) as CachedAuction;
-  } catch {
-    return null;
+    const raw = await redisRead.get(key);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as CachedAuction;
+        inMemoryCache.set(key, { data: parsed, expiresAt: Date.now() + CACHE_TTL_SEC * 1000 });
+        return parsed;
+      } catch {
+        // ignore parse errors, fall through
+      }
+    }
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "auction_cache_read_redis_failed", auctionId, reason: error instanceof Error ? error.message : String(error) }));
   }
+
+  purgeExpiredInMemory();
+  const mem = inMemoryCache.get(key);
+  return mem?.data ?? null;
 }
 
-/**
- * Cập nhật giá hiện tại + winnerId trong cache sau khi bid thành công.
- */
 export async function updateCachedPrice(
   auctionId: string,
   newPrice: bigint,
   winnerId: string,
   endsAt?: Date | null,
 ): Promise<void> {
+  const key = Keys.auction(auctionId);
   const cached = await getCachedAuction(auctionId);
-  if (!cached) return; // chưa được warm → bỏ qua
+  if (!cached) return;
 
   cached.currentPrice = newPrice.toString();
   cached.winnerId = winnerId;
@@ -80,12 +99,23 @@ export async function updateCachedPrice(
     cached.endsAt = endsAt?.toISOString() ?? null;
   }
 
-  await redis.set(Keys.auction(auctionId), JSON.stringify(cached), "EX", CACHE_TTL_SEC);
+  try {
+    await redis.set(key, JSON.stringify(cached), "EX", CACHE_TTL_SEC);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "auction_cache_update_redis_failed", auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  inMemoryCache.set(key, { data: cached, expiresAt: Date.now() + CACHE_TTL_SEC * 1000 });
 }
 
-/**
- * Xóa cache khi phiên kết thúc / hủy.
- */
 export async function evictAuction(auctionId: string): Promise<void> {
-  await redis.del(Keys.auction(auctionId));
+  const key = Keys.auction(auctionId);
+
+  try {
+    await redis.del(key);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "auction_cache_evict_redis_failed", auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
+
+  inMemoryCache.delete(key);
 }

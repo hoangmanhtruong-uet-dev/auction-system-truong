@@ -126,37 +126,61 @@ export async function closeAllQueues(): Promise<void> {
 }
 
 export async function pingQueueSubsystem(): Promise<void> {
-  await getQueue(QUEUE_NAMES.AUCTION_EXPIRY).getJobCounts("waiting", "active", "delayed", "failed");
+  try {
+    await getQueue(QUEUE_NAMES.AUCTION_EXPIRY).getJobCounts("waiting", "active", "delayed", "failed");
+  } catch (error) {
+    throw new Error(`Queue subsystem unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export async function enqueueBidSideEffects(input: BidSideEffectJob): Promise<void> {
   const data = BidSideEffectJobSchema.parse(input);
-  await getQueue(QUEUE_NAMES.BID_SIDE_EFFECTS).add(JOB_NAMES.PROCESS_BID, data, { jobId: `bid-${data.bidId}` });
+  try {
+    await getQueue(QUEUE_NAMES.BID_SIDE_EFFECTS).add(JOB_NAMES.PROCESS_BID, data, { jobId: `bid-${data.bidId}` });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "queue_enqueue_failed", queue: QUEUE_NAMES.BID_SIDE_EFFECTS, bidId: data.bidId, reason: error instanceof Error ? error.message : String(error) }));
+  }
 }
 
 export async function scheduleAuctionExpiry(auctionId: string, endsAt: Date): Promise<void> {
   const data = AuctionExpiryJobSchema.parse({ auctionId, expectedEndsAt: endsAt.toISOString() });
-  await getQueue(QUEUE_NAMES.AUCTION_EXPIRY).add(JOB_NAMES.CLOSE_AUCTION, data, {
-    jobId: `expiry-${auctionId}-${endsAt.getTime()}`,
-    delay: Math.max(0, endsAt.getTime() - Date.now()),
-  });
+  try {
+    await getQueue(QUEUE_NAMES.AUCTION_EXPIRY).add(JOB_NAMES.CLOSE_AUCTION, data, {
+      jobId: `expiry-${auctionId}-${endsAt.getTime()}`,
+      delay: Math.max(0, endsAt.getTime() - Date.now()),
+    });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "queue_enqueue_failed", queue: QUEUE_NAMES.AUCTION_EXPIRY, auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
 }
 
 export async function enqueueSettlement(input: SettlementJob): Promise<void> {
   const data = SettlementJobSchema.parse(input);
-  await getQueue(QUEUE_NAMES.SETTLEMENT).add(JOB_NAMES.PROCESS_SETTLEMENT, data, { jobId: `settle-${data.auctionId}` });
+  try {
+    await getQueue(QUEUE_NAMES.SETTLEMENT).add(JOB_NAMES.PROCESS_SETTLEMENT, data, { jobId: `settle-${data.auctionId}` });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "queue_enqueue_failed", queue: QUEUE_NAMES.SETTLEMENT, auctionId: data.auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
 }
 
 export async function enqueueForfeit(input: ForfeitJob): Promise<void> {
   const data = ForfeitJobSchema.parse(input);
-  await getQueue(QUEUE_NAMES.SETTLEMENT).add(JOB_NAMES.PROCESS_FORFEIT, data, { jobId: `forfeit-${data.auctionId}` });
+  try {
+    await getQueue(QUEUE_NAMES.SETTLEMENT).add(JOB_NAMES.PROCESS_FORFEIT, data, { jobId: `forfeit-${data.auctionId}` });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "queue_enqueue_failed", queue: QUEUE_NAMES.SETTLEMENT, auctionId: data.auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
 }
 
 export async function enqueueNotification(input: NotificationJob): Promise<void> {
   const data = NotificationJobSchema.parse(input);
-  await getQueue(QUEUE_NAMES.NOTIFICATIONS).add(`${JOB_NAMES.NOTIFY}-${data.type}`, data, {
-    jobId: (data.idempotencyKey ?? `notification-${data.type}-${data.recipientId}-${data.auctionId}`).replaceAll(":", "-"),
-  });
+  try {
+    await getQueue(QUEUE_NAMES.NOTIFICATIONS).add(`${JOB_NAMES.NOTIFY}-${data.type}`, data, {
+      jobId: (data.idempotencyKey ?? `notification-${data.type}-${data.recipientId}-${data.auctionId}`).replaceAll(":", "-"),
+    });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "queue_enqueue_failed", queue: QUEUE_NAMES.NOTIFICATIONS, recipientId: data.recipientId, auctionId: data.auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
 }
 
 export async function enqueueAuctionClosed(
@@ -164,9 +188,13 @@ export async function enqueueAuctionClosed(
   idempotencyKey: string,
 ): Promise<void> {
   const data = AuctionClosedJobSchema.parse(input);
-  await getQueue(QUEUE_NAMES.AUCTION_EVENTS).add(JOB_NAMES.PROCESS_AUCTION_CLOSED, data, {
-    jobId: idempotencyKey.replaceAll(":", "-"),
-    removeOnComplete: false,
-    removeOnFail: false,
-  });
+  try {
+    await getQueue(QUEUE_NAMES.AUCTION_EVENTS).add(JOB_NAMES.PROCESS_AUCTION_CLOSED, data, {
+      jobId: idempotencyKey.replaceAll(":", "-"),
+      removeOnComplete: false,
+      removeOnFail: false,
+    });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "queue_enqueue_failed", queue: QUEUE_NAMES.AUCTION_EVENTS, auctionId: data.auctionId, reason: error instanceof Error ? error.message : String(error) }));
+  }
 }

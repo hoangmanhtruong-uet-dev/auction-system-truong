@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { headers } from "next/headers";
 import { emitSecurityEvent } from "@/src/lib/security-events";
+import { getCanonicalAppOrigin } from "@/src/lib/env";
 
 const MAX_HEADER_LENGTH = 512;
 
@@ -58,34 +59,62 @@ export async function assertSameOrigin(): Promise<void> {
   const referer = cleanHeader(headerStore.get("referer"));
   const candidate = origin ?? referer;
 
-  // Server-to-server and direct Server Component invocations do not carry browser origin headers.
-  // Next.js also validates Server Action Origin against Host. When a browser supplies either
-  // header, enforce the configured canonical origin here as defense in depth.
   if (!candidate) return;
 
   const production = process.env.NODE_ENV === "production";
-  const configuredOrigin = production
-    ? process.env.APP_ORIGIN
-    : process.env.APP_ORIGIN ?? process.env.NEXT_PUBLIC_APP_URL;
-  const host = cleanHeader(headerStore.get("host"));
-  if (!isAllowedRequestOrigin(candidate, configuredOrigin, host, production)) {
+  const configuredOrigin = getCanonicalAppOrigin();
+  const proxyProvider = process.env.TRUSTED_PROXY_PROVIDER ?? "none";
+  const usingTrustedProxy = ["vercel", "cloudflare", "nginx"].includes(proxyProvider);
+  const effectiveHost = usingTrustedProxy
+    ? cleanHeader(headerStore.get("x-forwarded-host")) ?? cleanHeader(headerStore.get("host"))
+    : cleanHeader(headerStore.get("host"));
+  const effectiveProto = usingTrustedProxy
+    ? cleanHeader(headerStore.get("x-forwarded-proto"))?.split(",")[0]?.trim() ?? "https"
+    : "https";
+  if (!isAllowedRequestOrigin(candidate, configuredOrigin, effectiveHost, production, effectiveProto, usingTrustedProxy)) {
     emitSecurityEvent("invalid_origin", {
       requestId: cleanHeader(headerStore.get("x-request-id"), 100) ?? randomUUID(),
       originKey: hashIdentifier(candidate),
+      configuredOriginKey: configuredOrigin ? hashIdentifier(configuredOrigin) : null,
+      host: effectiveHost,
+      trustedProxy: usingTrustedProxy ? proxyProvider : null,
     });
     throw new Error("INVALID_ORIGIN");
   }
 }
 
-export function isAllowedRequestOrigin(candidate: string, configuredOrigin: string | undefined, host: string | null, production: boolean) {
+export function isAllowedRequestOrigin(
+  candidate: string,
+  configuredOrigin: string | undefined,
+  host: string | null,
+  production: boolean,
+  effectiveProto: string = "https",
+  usingTrustedProxy: boolean = false,
+) {
   const allowed = new Set<string>();
   try {
-    if (configuredOrigin) allowed.add(new URL(configuredOrigin).origin);
-    if (host && !production) {
-      allowed.add(`http://${host}`);
-      allowed.add(`https://${host}`);
+    const candidateUrl = new URL(candidate);
+    if (configuredOrigin) {
+      const configuredUrl = new URL(configuredOrigin);
+      allowed.add(configuredUrl.origin);
+      if (production && candidateUrl.hostname === configuredUrl.hostname) {
+        allowed.add(`https://${configuredUrl.host}`);
+        if (usingTrustedProxy) {
+          allowed.add(`http://${configuredUrl.host}`);
+        }
+      }
+    } else if (!production) {
+      if (host) {
+        allowed.add(`http://${host}`);
+        allowed.add(`https://${host}`);
+      }
+    } else {
+      if (host && usingTrustedProxy) {
+        const trustedProto = effectiveProto === "http" ? "http" : "https";
+        allowed.add(`${trustedProto}://${host}`);
+      }
     }
-    return allowed.has(new URL(candidate).origin);
+    return allowed.has(candidateUrl.origin);
   } catch {
     return false;
   }

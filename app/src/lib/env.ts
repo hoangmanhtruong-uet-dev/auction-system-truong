@@ -13,12 +13,10 @@ const productionSecrets = z.object({
   CRON_SECRET: z.string().min(32).refine((value) => !/change-this|example|replace-me/i.test(value), "CRON_SECRET is a placeholder"),
 });
 
-const webRuntime = z.object({
-  APP_ORIGIN: z.string().url(),
-  TRUSTED_PROXY_PROVIDER: z.enum(["none", "vercel", "cloudflare", "nginx"]),
-  SESSION_ABSOLUTE_TIMEOUT_SECONDS: z.coerce.number().int().min(900).max(86400).default(28800),
-  SESSION_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().min(300).max(14400).default(1800),
-});
+export function getCanonicalAppOrigin(source: NodeJS.ProcessEnv = process.env): string | undefined {
+  const origin = (source.APP_ORIGIN ?? source.NEXT_PUBLIC_APP_URL)?.trim().replace(/^["']|["']$/g, "").trim();
+  return origin && origin.length > 0 ? origin : undefined;
+}
 
 export const workerEnvSchema = common.extend({
   ADMIN_PROFILE_ID: z.string().min(1),
@@ -43,11 +41,40 @@ export function validateWorkerEnv(source: NodeJS.ProcessEnv = process.env): Work
 }
 
 export function validateWebEnv(source: NodeJS.ProcessEnv = process.env) {
-  const parsed = common.merge(webRuntime).safeParse(source);
-  if (!parsed.success) return { ok: false as const, invalid: parsed.error.issues.map((issue) => issue.path.join(".")) };
-  if (parsed.data.NODE_ENV === "production") {
+  const origin = getCanonicalAppOrigin(source);
+  const trustedProvider = (() => {
+    const v = source.TRUSTED_PROXY_PROVIDER;
+    return ["none", "vercel", "cloudflare", "nginx"].includes(v as string) ? (v as "none" | "vercel" | "cloudflare" | "nginx") : undefined;
+  })();
+  const invalid: string[] = [];
+  if (!origin) invalid.push("APP_ORIGIN");
+  else if (!z.string().url().safeParse(origin).success) invalid.push("APP_ORIGIN");
+  if (!trustedProvider) invalid.push("TRUSTED_PROXY_PROVIDER");
+
+  const commonResult = common.safeParse(source);
+  if (!commonResult.success) {
+    for (const issue of commonResult.error.issues) invalid.push(issue.path.join("."));
+  }
+
+  const sessionAbs = Number(source.SESSION_ABSOLUTE_TIMEOUT_SECONDS ?? "28800");
+  if (!Number.isInteger(sessionAbs) || sessionAbs < 900 || sessionAbs > 86400) invalid.push("SESSION_ABSOLUTE_TIMEOUT_SECONDS");
+  const sessionIdle = Number(source.SESSION_IDLE_TIMEOUT_SECONDS ?? "1800");
+  if (!Number.isInteger(sessionIdle) || sessionIdle < 300 || sessionIdle > 14400) invalid.push("SESSION_IDLE_TIMEOUT_SECONDS");
+
+  if (invalid.length > 0) return { ok: false as const, invalid: Array.from(new Set(invalid)) };
+  if (!commonResult.success) return { ok: false as const, invalid: Array.from(new Set(invalid)) };
+  if (commonResult.data.NODE_ENV === "production") {
     const secrets = productionSecrets.safeParse(source);
     if (!secrets.success) return { ok: false as const, invalid: secrets.error.issues.map((issue) => issue.path.join(".")) };
   }
-  return { ok: true as const, data: parsed.data };
+  return {
+    ok: true as const,
+    data: {
+      ...commonResult.data,
+      APP_ORIGIN: origin as string,
+      TRUSTED_PROXY_PROVIDER: trustedProvider as "none" | "vercel" | "cloudflare" | "nginx",
+      SESSION_ABSOLUTE_TIMEOUT_SECONDS: sessionAbs,
+      SESSION_IDLE_TIMEOUT_SECONDS: sessionIdle,
+    },
+  };
 }
