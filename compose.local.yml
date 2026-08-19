@@ -1,0 +1,50 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: autobid
+      MYSQL_USER: autobid
+      MYSQL_PASSWORD: local-only-password
+      MYSQL_ROOT_PASSWORD: local-only-root-password
+    ports: ["3306:3306"]
+    volumes: ["autobid_mysql_data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plocal-only-root-password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "local-only-password"]
+    ports: ["6379:6379"]
+    volumes: ["autobid_redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "local-only-password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  web:
+    build: { context: ./app, target: web }
+    env_file: ["./app/.env"]
+    environment:
+      DATABASE_URL: mysql://autobid:local-only-password@mysql:3306/autobid
+      REDIS_URL: redis://:local-only-password@redis:6379/0
+      REQUIRE_WORKER_HEARTBEAT: "true"
+    ports: ["3000:3000"]
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  worker:
+    build: { context: ./app, target: worker }
+    env_file: ["./app/.env"]
+    environment:
+      DATABASE_URL: mysql://autobid:local-only-password@mysql:3306/autobid
+      REDIS_URL: redis://:local-only-password@redis:6379/0
+      FINANCIAL_OPERATIONS_ENABLED: "false"
+      REAL_MONEY_PAYMENTS_ENABLED: "false"
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+volumes:
+  autobid_mysql_data:
+  autobid_redis_data:

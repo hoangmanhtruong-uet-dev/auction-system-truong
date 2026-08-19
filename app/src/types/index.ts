@@ -14,6 +14,13 @@ export const RegisterSchema = z.object({
   password: z.string().min(8, "Mật khẩu phải từ 8 ký tự trở lên"),
   fullName: z.string().min(2, "Họ tên phải từ 2 ký tự trở lên"),
   phone: z.string().optional(),
+}).superRefine((value, context) => {
+  if (value.email.length > 255) context.addIssue({ code: "too_big", maximum: 255, origin: "string", path: ["email"], message: "Email is too long" });
+  if (value.password.length < 10 || value.password.length > 128 || !/[a-z]/.test(value.password) || !/[A-Z]/.test(value.password) || !/[0-9]/.test(value.password)) {
+    context.addIssue({ code: "custom", path: ["password"], message: "Password must be 10-128 characters and include upper-case, lower-case, and a number" });
+  }
+  if (value.fullName.trim().length > 100) context.addIssue({ code: "custom", path: ["fullName"], message: "Full name is too long" });
+  if (value.phone && !/^\+?[0-9]{8,15}$/.test(value.phone.trim())) context.addIssue({ code: "custom", path: ["phone"], message: "Phone number is invalid" });
 });
 
 export type RegisterInput = z.infer<typeof RegisterSchema>;
@@ -21,6 +28,9 @@ export type RegisterInput = z.infer<typeof RegisterSchema>;
 export const LoginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
   password: z.string().min(1, "Mật khẩu không được để trống"),
+}).superRefine((value, context) => {
+  if (value.email.length > 255) context.addIssue({ code: "too_big", maximum: 255, origin: "string", path: ["email"], message: "Email is too long" });
+  if (value.password.length > 128) context.addIssue({ code: "too_big", maximum: 128, origin: "string", path: ["password"], message: "Password is too long" });
 });
 
 export type LoginInput = z.infer<typeof LoginSchema>;

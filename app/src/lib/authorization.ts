@@ -5,6 +5,7 @@ import { createAdminAuditLog } from "@/src/lib/audit";
 import { getCurrentUser, type SafeUser } from "@/src/lib/auth";
 import { error, type ErrorResult } from "@/src/lib/error-codes";
 import { prisma } from "@/src/lib/prisma";
+import { assertSameOrigin } from "@/src/lib/security-request";
 import {
   ROLE_RANK,
   hasAnyPermission,
@@ -57,6 +58,10 @@ export async function requirePermission(permission: Permission): Promise<SafeUse
   const user = await requireAuth();
   if (isError(user)) return user;
 
+  if (user.mustChangePassword) {
+    return error("FORBIDDEN", "You must change your temporary password before continuing.");
+  }
+
   if (!hasPermission(user, permission)) {
     return forbidden();
   }
@@ -84,6 +89,11 @@ export async function requirePagePermission(permission: Permission): Promise<Saf
 }
 
 export async function requireActionPermission(permission: Permission): Promise<SafeUser | ErrorResult> {
+  try {
+    await assertSameOrigin();
+  } catch {
+    return error("FORBIDDEN", "Invalid request origin.");
+  }
   return requirePermission(permission);
 }
 

@@ -136,7 +136,7 @@ export async function listAdminAuditLogs() {
 }
 
 export async function listAdminNotifications() {
-  const actor = await requireActionPermission("notifications.read.self");
+  const actor = await requireActionPermission("notifications.read.all");
   if (isAuthorizationError(actor)) {
     throw new Error(actor.message);
   }

@@ -1,10 +1,15 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDateTime } from "@/lib/utils";
+import { createStaffAccount } from "@/src/actions/admin-users";
 
 import { AdminDataTable, TableEmptyState } from "../_components/admin-data-table";
 import { StatusBadge } from "../_components/status-badge";
@@ -20,6 +25,8 @@ type AdminUser = {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  lastLoginAt: string | null;
+  mustChangePassword: boolean;
   _count: {
     auctionsAsSeller: number;
     bids: number;
@@ -38,6 +45,13 @@ export function AdminUsersClient({
   const [users, setUsers] = useState(initialUsers);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<"all" | AdminRole>("all");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createPending, setCreatePending] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState<"SUPPORT" | "MODERATOR" | "FINANCE" | "ADMIN">("SUPPORT");
+  const [createReason, setCreateReason] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -64,6 +78,7 @@ export function AdminUsersClient({
           Quan ly role RBAC, so auction, so bid va trang thai tai khoan. Doi role va block user deu ghi audit log.
         </p>
       </div>
+      <Button type="button" className="w-fit" onClick={() => setCreateOpen(true)}><Plus className="size-4" /> Create staff account</Button>
 
       <div className="grid gap-3 rounded-xl border border-white/10 bg-white/5 p-3 shadow-xl backdrop-blur-xl md:grid-cols-[1fr_220px]">
         <div className="relative">
@@ -91,7 +106,7 @@ export function AdminUsersClient({
         {filtered.length === 0 ? (
           <TableEmptyState title="Khong co user phu hop" description="Thu doi bo loc hoac kiem tra du lieu nguoi dung." />
         ) : (
-          <table className="w-full min-w-[980px] text-sm">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead className="border-b border-white/10 bg-white/5 text-left text-xs uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Name / email</th>
@@ -99,6 +114,7 @@ export function AdminUsersClient({
                 <th className="px-4 py-3 text-right font-medium">Auctions</th>
                 <th className="px-4 py-3 text-right font-medium">Bids</th>
                 <th className="px-4 py-3 font-medium">Joined</th>
+                <th className="px-4 py-3 font-medium">Last login</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
@@ -114,6 +130,7 @@ export function AdminUsersClient({
                   <td className="px-4 py-3 text-right">{user._count.auctionsAsSeller}</td>
                   <td className="px-4 py-3 text-right">{user._count.bids}</td>
                   <td className="px-4 py-3 text-neutral-500">{formatDateTime(user.createdAt)}</td>
+                  <td className="px-4 py-3 text-neutral-500">{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "Never"}</td>
                   <td className="px-4 py-3"><StatusBadge type="user" value={user.deletedAt} /></td>
                   <td className="px-4 py-3">
                     <UserActions user={user} currentAdminId={currentAdminId} onChanged={handleUserChanged} />
@@ -124,6 +141,37 @@ export function AdminUsersClient({
           </table>
         )}
       </AdminDataTable>
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setTemporaryPassword(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{temporaryPassword ? "Temporary password" : "Create staff account"}</DialogTitle>
+            <DialogDescription>
+              {temporaryPassword ? "Copy this password now. It is displayed once and must be changed at first login." : "Create a least-privilege internal account. The action is audited."}
+            </DialogDescription>
+          </DialogHeader>
+          {temporaryPassword ? (
+            <code className="break-all rounded-md bg-muted p-3 text-sm">{temporaryPassword}</code>
+          ) : (
+            <div className="space-y-3">
+              <div><Label htmlFor="staff-name">Full name</Label><Input id="staff-name" value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={100} /></div>
+              <div><Label htmlFor="staff-email">Email</Label><Input id="staff-email" type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} maxLength={255} /></div>
+              <div><Label htmlFor="staff-role">Role</Label><select id="staff-role" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={newRole} onChange={(event) => setNewRole(event.target.value as typeof newRole)}>{["SUPPORT", "MODERATOR", "FINANCE", "ADMIN"].map((item) => <option key={item}>{item}</option>)}</select></div>
+              <div><Label htmlFor="staff-reason">Reason</Label><Textarea id="staff-reason" value={createReason} onChange={(event) => setCreateReason(event.target.value)} maxLength={500} /></div>
+            </div>
+          )}
+          <DialogFooter>
+            {temporaryPassword ? <Button type="button" onClick={() => setCreateOpen(false)}>Done</Button> : <Button type="button" disabled={createPending || !newEmail || newName.trim().length < 2 || createReason.trim().length < 5} onClick={async () => {
+              setCreatePending(true);
+              try {
+                const result = await createStaffAccount({ email: newEmail, fullName: newName, role: newRole }, createReason);
+                setUsers((current) => [{ ...result.user, createdAt: result.user.createdAt.toISOString(), updatedAt: result.user.updatedAt.toISOString(), deletedAt: null, lastLoginAt: null }, ...current]);
+                setTemporaryPassword(result.temporaryPassword);
+                setNewEmail(""); setNewName(""); setCreateReason("");
+              } finally { setCreatePending(false); }
+            }}>{createPending ? "Creating..." : "Create account"}</Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

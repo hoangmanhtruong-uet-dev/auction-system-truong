@@ -78,7 +78,7 @@ export function ChangePasswordClient() {
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
-        router.push("/profile");
+        router.push("/auth/login?password_changed=true");
         router.refresh();
       } else {
         toast.error(result.error, {

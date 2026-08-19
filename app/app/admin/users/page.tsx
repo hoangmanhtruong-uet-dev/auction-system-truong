@@ -13,6 +13,7 @@ export default async function AdminUsersPage() {
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
     deletedAt: u.deletedAt?.toISOString() ?? null,
+    lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
   }));
 
   return <AdminUsersClient initialUsers={serializedUsers} currentAdminId={admin.id} />;

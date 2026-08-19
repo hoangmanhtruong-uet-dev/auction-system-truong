@@ -1,195 +1,172 @@
-/**
- * Message Queue – BullMQ (Redis-backed)
- *
- * Tách side-effects khỏi hot path của placeBid:
- * - bidSideEffects: Trừ tiền cọc, ghi log DB, gửi notification
- * - auctionExpiry:  TTL-based delayed job → tự đóng phiên khi hết giờ
- *
- * Server chỉ validate + ghi Redis + trả "Thành công" trong vài ms.
- * Workers nhặt job từ queue xử lý từ từ phía sau.
- *
- * ponytail: Single Redis. Khi scale, BullMQ tự hỗ trợ Redis Cluster.
- */
-
 import { Queue } from "bullmq";
+import { z } from "zod";
 
-// Dùng connection config object thay vì Redis instance để tránh
-// type conflict giữa ioredis của project và ioredis bundled trong bullmq.
-const queueConnection = {
-  host: process.env.REDIS_HOST ?? "localhost",
-  port: Number(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD ?? undefined,
-  db: Number(process.env.REDIS_DB) || 0,
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-};
+import { getBullMqConnection } from "@/src/lib/redis";
 
-// ─── Queue definitions ──────────────────────────────────────────────────────
+export const QUEUE_NAMES = {
+  BID_SIDE_EFFECTS: "bid-side-effects",
+  NOTIFICATIONS: "notifications",
+  AUCTION_EXPIRY: "auction-expiry",
+  AUCTION_EVENTS: "auction-events",
+  SETTLEMENT: "settlement",
+  RECONCILIATION: "reconciliation",
+} as const;
 
-/**
- * Queue xử lý side-effects sau khi bid thành công.
- * Jobs: ghi DB audit, gửi notification, trừ tiền cọc, etc.
- */
-export const bidSideEffectsQueue = new Queue("bid-side-effects", {
-  connection: queueConnection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 1000 },
-    removeOnComplete: { count: 1000 },
-    removeOnFail: { count: 5000 },
-  },
+export const JOB_NAMES = {
+  PROCESS_BID: "process-bid",
+  NOTIFY: "notify",
+  CLOSE_AUCTION: "close-auction",
+  PROCESS_AUCTION_CLOSED: "process-auction-closed",
+  PROCESS_SETTLEMENT: "process-settlement",
+  PROCESS_FORFEIT: "process-forfeit",
+  RECONCILE: "reconcile",
+} as const;
+
+export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
+
+const id = z.string().min(1).max(64);
+const money = z.string().regex(/^\d+$/);
+const isoDate = z.string().datetime();
+
+export const BidSideEffectJobSchema = z.object({
+  auctionId: id,
+  bidId: id,
+  bidderId: id,
+  bidderName: z.string().min(1).max(255),
+  amount: money,
+  previousPrice: money,
+  winnerId: id.nullable(),
+  autoExtended: z.boolean(),
+  endsAt: isoDate.nullable(),
 });
+export type BidSideEffectJob = z.infer<typeof BidSideEffectJobSchema>;
 
-/**
- * Queue xử lý đóng phiên đấu giá khi hết giờ.
- * Mỗi job là một "delayed job" với delay = (endsAt - now).
- * Khi hết delay → job được thực thi → đóng phiên.
- *
- * Tương đương TTL + Dead Letter Exchange trong RabbitMQ.
- */
-export const auctionExpiryQueue = new Queue("auction-expiry", {
-  connection: queueConnection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 2000 },
-    removeOnComplete: { count: 500 },
-    removeOnFail: { count: 2000 },
-  },
+export const AuctionExpiryJobSchema = z.object({ auctionId: id, expectedEndsAt: isoDate });
+export type AuctionExpiryJob = z.infer<typeof AuctionExpiryJobSchema>;
+
+export const AuctionClosedJobSchema = z.object({
+  auctionId: id,
+  winnerId: id.nullable(),
+  finalPrice: money,
 });
+export type AuctionClosedJob = z.infer<typeof AuctionClosedJobSchema>;
 
-/**
- * Queue xử lý kết toán (settlement) sau khi phiên đấu giá kết thúc.
- */
-export const settlementQueue = new Queue("settlement", {
-  connection: queueConnection,
-  defaultJobOptions: {
-    attempts: 5,
-    backoff: { type: "exponential", delay: 2000 },
-    removeOnComplete: { count: 500 },
-    removeOnFail: { count: 2000 },
-  },
+export const SettlementJobSchema = z.object({
+  auctionId: id,
+  winnerProfileId: id,
+  sellerProfileId: id,
+  finalPrice: money,
 });
+export type SettlementJob = z.infer<typeof SettlementJobSchema>;
 
-/**
- * Queue xử lý đối soát tài chính hàng đêm (reconciliation).
- */
-export const reconciliationQueue = new Queue("reconciliation", {
-  connection: queueConnection,
-  defaultJobOptions: {
-    attempts: 2,
-    backoff: { type: "fixed", delay: 30000 },
-    removeOnComplete: { count: 100 },
-    removeOnFail: { count: 50 },
-  },
+export const ForfeitJobSchema = SettlementJobSchema.extend({ payByDeadline: isoDate });
+export type ForfeitJob = z.infer<typeof ForfeitJobSchema>;
+
+export const ReconciliationJobSchema = z.object({ date: z.string().date() });
+export type ReconciliationJob = z.infer<typeof ReconciliationJobSchema>;
+
+export const NotificationJobSchema = z.object({
+  type: z.enum(["BID_OUTBID", "AUCTION_WON", "AUCTION_ENDED", "AUCTION_STARTING"]),
+  recipientId: id,
+  auctionId: id,
+  title: z.string().min(1).max(255),
+  message: z.string().min(1).max(4000),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  idempotencyKey: z.string().min(1).max(191).optional(),
 });
+export type NotificationJob = z.infer<typeof NotificationJobSchema>;
 
-/**
- * Queue gửi notification (push, email, in-app).
- */
-export const notificationQueue = new Queue("notifications", {
-  connection: queueConnection,
-  defaultJobOptions: {
-    attempts: 5,
-    backoff: { type: "exponential", delay: 500 },
-    removeOnComplete: { count: 2000 },
-    removeOnFail: { count: 5000 },
-  },
-});
+type QueueRegistry = Partial<Record<QueueName, Queue>> & { closing?: Promise<void> };
 
-// ─── Job types ───────────────────────────────────────────────────────────────
+declare global {
+  var __autoBidQueueRegistry: QueueRegistry | undefined;
+}
 
-export type BidSideEffectJob = {
-  auctionId: string;
-  bidId: string;
-  bidderId: string;
-  bidderName: string;
-  amount: string;
-  previousPrice: string;
-  winnerId: string | null;
-  autoExtended: boolean;
-  endsAt: string | null;
-};
+function registry(): QueueRegistry {
+  globalThis.__autoBidQueueRegistry ??= {};
+  return globalThis.__autoBidQueueRegistry;
+}
 
-export type AuctionExpiryJob = {
-  auctionId: string;
-  expectedEndsAt: string;
-};
+function queueOptions(name: QueueName) {
+  if (name === QUEUE_NAMES.SETTLEMENT) {
+    return { attempts: 3, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: { count: 500 }, removeOnFail: { count: 2000 } };
+  }
+  if (name === QUEUE_NAMES.RECONCILIATION) {
+    return { attempts: 2, backoff: { type: "fixed", delay: 30000 }, removeOnComplete: { count: 100 }, removeOnFail: { count: 200 } };
+  }
+  return { attempts: 3, backoff: { type: "exponential", delay: 1000 }, removeOnComplete: { count: 1000 }, removeOnFail: { count: 5000 } };
+}
 
-export type SettlementJob = {
-  auctionId: string;
-  winnerProfileId: string;
-  sellerProfileId: string;
-  finalPrice: string; // bigint serialized as string
-};
+export function getQueue(name: QueueName): Queue {
+  const current = registry()[name];
+  if (current) return current;
 
-export type ForfeitJob = {
-  auctionId: string;
-  winnerProfileId: string;
-  sellerProfileId: string;
-  finalPrice: string;
-  payByDeadline: string; // ISO string
-};
+  const queue = new Queue(name, {
+    connection: getBullMqConnection(),
+    prefix: process.env.QUEUE_PREFIX ?? "autobid",
+    defaultJobOptions: queueOptions(name),
+  });
+  registry()[name] = queue;
+  return queue;
+}
 
-export type ReconciliationJob = {
-  date: string; // YYYY-MM-DD
-};
+export async function closeAllQueues(): Promise<void> {
+  const state = registry();
+  if (state.closing) return state.closing;
+  state.closing = (async () => {
+    const queues = Object.values(QUEUE_NAMES)
+      .map((name) => state[name])
+      .filter((queue): queue is Queue => Boolean(queue));
+    const results = await Promise.allSettled(queues.map((queue) => queue.close()));
+    const failures = results.filter((result) => result.status === "rejected");
+    globalThis.__autoBidQueueRegistry = {};
+    if (failures.length > 0) throw new AggregateError(failures.map((failure) => failure.reason), "Failed to close queues");
+  })();
+  return state.closing;
+}
 
-export type NotificationJob = {
-  type: "BID_OUTBID" | "AUCTION_WON" | "AUCTION_ENDED" | "AUCTION_STARTING";
-  recipientId: string;
-  auctionId: string;
-  title: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-};
+export async function pingQueueSubsystem(): Promise<void> {
+  await getQueue(QUEUE_NAMES.AUCTION_EXPIRY).getJobCounts("waiting", "active", "delayed", "failed");
+}
 
-// ─── Enqueue helpers ─────────────────────────────────────────────────────────
+export async function enqueueBidSideEffects(input: BidSideEffectJob): Promise<void> {
+  const data = BidSideEffectJobSchema.parse(input);
+  await getQueue(QUEUE_NAMES.BID_SIDE_EFFECTS).add(JOB_NAMES.PROCESS_BID, data, { jobId: `bid-${data.bidId}` });
+}
 
-/**
- * Enqueue side-effects sau khi bid thành công.
- */
-export async function enqueueBidSideEffects(data: BidSideEffectJob): Promise<void> {
-  await bidSideEffectsQueue.add("process-bid", data, {
-    jobId: `bid-${data.bidId}`, // deduplicate
+export async function scheduleAuctionExpiry(auctionId: string, endsAt: Date): Promise<void> {
+  const data = AuctionExpiryJobSchema.parse({ auctionId, expectedEndsAt: endsAt.toISOString() });
+  await getQueue(QUEUE_NAMES.AUCTION_EXPIRY).add(JOB_NAMES.CLOSE_AUCTION, data, {
+    jobId: `expiry-${auctionId}-${endsAt.getTime()}`,
+    delay: Math.max(0, endsAt.getTime() - Date.now()),
   });
 }
 
-/**
- * Schedule đóng phiên đấu giá.
- * Nếu phiên được gia hạn (anti-snipe), job cũ bị thay thế bằng job mới.
- */
-export async function scheduleAuctionExpiry(
-  auctionId: string,
-  endsAt: Date,
+export async function enqueueSettlement(input: SettlementJob): Promise<void> {
+  const data = SettlementJobSchema.parse(input);
+  await getQueue(QUEUE_NAMES.SETTLEMENT).add(JOB_NAMES.PROCESS_SETTLEMENT, data, { jobId: `settle-${data.auctionId}` });
+}
+
+export async function enqueueForfeit(input: ForfeitJob): Promise<void> {
+  const data = ForfeitJobSchema.parse(input);
+  await getQueue(QUEUE_NAMES.SETTLEMENT).add(JOB_NAMES.PROCESS_FORFEIT, data, { jobId: `forfeit-${data.auctionId}` });
+}
+
+export async function enqueueNotification(input: NotificationJob): Promise<void> {
+  const data = NotificationJobSchema.parse(input);
+  await getQueue(QUEUE_NAMES.NOTIFICATIONS).add(`${JOB_NAMES.NOTIFY}-${data.type}`, data, {
+    jobId: (data.idempotencyKey ?? `notification-${data.type}-${data.recipientId}-${data.auctionId}`).replaceAll(":", "-"),
+  });
+}
+
+export async function enqueueAuctionClosed(
+  input: AuctionClosedJob,
+  idempotencyKey: string,
 ): Promise<void> {
-  const delayMs = Math.max(0, endsAt.getTime() - Date.now());
-  const jobId = `expiry-${auctionId}-${endsAt.toISOString()}`;
-
-  await auctionExpiryQueue.add(
-    "close-auction",
-    { auctionId, expectedEndsAt: endsAt.toISOString() } satisfies AuctionExpiryJob,
-    { jobId, delay: delayMs },
-  );
-}
-
-/**
- * Enqueue settlement processing for a won auction.
- */
-export async function enqueueSettlement(data: SettlementJob): Promise<void> {
-  await settlementQueue.add("process-settlement", data, {
-    jobId: `settle-${data.auctionId}`,
-  });
-}
-
-/**
- * Enqueue notification.
- */
-export async function enqueueNotification(data: NotificationJob): Promise<void> {
-  await notificationQueue.add(`notify-${data.type}`, data);
-}
-
-export async function enqueueForfeit(data: ForfeitJob): Promise<void> {
-  await settlementQueue.add("process-forfeit", data, {
-    jobId: `forfeit-${data.auctionId}`,
+  const data = AuctionClosedJobSchema.parse(input);
+  await getQueue(QUEUE_NAMES.AUCTION_EVENTS).add(JOB_NAMES.PROCESS_AUCTION_CLOSED, data, {
+    jobId: idempotencyKey.replaceAll(":", "-"),
+    removeOnComplete: false,
+    removeOnFail: false,
   });
 }

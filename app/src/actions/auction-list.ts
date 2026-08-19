@@ -3,7 +3,6 @@
 import { AuctionStatus } from "@prisma/client";
 
 import { error, type ActionResult } from "@/src/lib/error-codes";
-import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
 import { prisma } from "@/src/lib/prisma";
 
 export type AuctionListingItem = {
@@ -47,12 +46,6 @@ export async function listAuctionCards(filter?: {
   sellerId?: string;
   take?: number;
 }): Promise<ActionResult<AuctionListingItem[]>> {
-  try {
-    await finalizeExpiredAuctions(prisma, 100);
-  } catch {
-    // Listing should remain available even if a best-effort lifecycle refresh fails.
-  }
-
   try {
     const status = normalizeStatus(filter?.status);
     const auctions = await prisma.auction.findMany({
@@ -102,7 +95,7 @@ export async function listAuctionCards(filter?: {
         },
       },
       orderBy: [{ status: "asc" }, { endsAt: "asc" }, { createdAt: "desc" }],
-      take: filter?.take,
+      take: Math.min(Math.max(filter?.take ?? 50, 1), 100),
     });
 
     return {

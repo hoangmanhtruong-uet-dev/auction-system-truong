@@ -5,12 +5,23 @@ import { createTransport, type Transporter } from "nodemailer";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireAuth } from "@/src/lib/auth";
+import { requireAuth as requireBaseAuth } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { ActionResult } from "@/src/types";
+import { assertSameOrigin } from "@/src/lib/security-request";
+import { checkRateLimit, getRateLimitErrorMessage } from "@/src/lib/rate-limit";
 
 // Nodemailer transport instance
 let transporter: Transporter | null = null;
+
+async function requireAuth() {
+  await assertSameOrigin();
+  return requireBaseAuth();
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
+}
 
 function getTransporter(): Transporter {
   if (!transporter) {
@@ -68,13 +79,15 @@ async function sendVerificationEmail(email: string, token: string, fullName: str
     `,
   });
   
-  console.log(`[Email] Đã gửi email xác minh tới ${email}`);
+  console.log("[Email] verification message accepted by transport");
 }
 
 export async function sendEmailVerification(): Promise<ActionResult<{ message: string }>> {
   const user = await requireAuth();
 
   try {
+    const rateLimit = await checkRateLimit(`email-verification:${user.id}`, { limit: 3, windowMs: 60 * 60 * 1000 });
+    if (!rateLimit.allowed) return { success: false, error: getRateLimitErrorMessage(rateLimit), code: "RATE_LIMITED" };
     // Check if already verified
     if (user.emailVerified) {
       return {
@@ -110,7 +123,7 @@ export async function sendEmailVerification(): Promise<ActionResult<{ message: s
     });
 
     // Send verification email
-    await sendVerificationEmail(user.email, token, user.fullName);
+    await sendVerificationEmail(user.email, token, escapeHtml(user.fullName));
 
     revalidatePath("/profile");
 
@@ -129,6 +142,11 @@ export async function sendEmailVerification(): Promise<ActionResult<{ message: s
 }
 
 export async function verifyEmail(token: string): Promise<ActionResult<{ message: string }>> {
+  try {
+    await assertSameOrigin();
+  } catch {
+    return { success: false, error: "Invalid request origin", code: "FORBIDDEN" };
+  }
   if (!token) {
     return {
       success: false,
@@ -158,16 +176,16 @@ export async function verifyEmail(token: string): Promise<ActionResult<{ message
       };
     }
 
-    // Mark token as used
-    await prisma.emailVerificationToken.update({
-      where: { id: emailToken.id },
-      data: { usedAt: new Date() },
-    });
-
-    // Update profile emailVerified field
-    await prisma.profile.update({
-      where: { id: emailToken.profileId },
-      data: { emailVerified: true },
+    await prisma.$transaction(async (tx) => {
+      const consumed = await tx.emailVerificationToken.updateMany({
+        where: { id: emailToken.id, usedAt: null, expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() },
+      });
+      if (consumed.count !== 1) throw new Error("TOKEN_ALREADY_USED");
+      await tx.profile.update({
+        where: { id: emailToken.profileId },
+        data: { emailVerified: true },
+      });
     });
 
     revalidatePath("/profile");
@@ -221,6 +239,7 @@ export async function updateEmail(data: { newEmail: string }): Promise<ActionRes
       data: {
         email: newEmail,
         emailVerified: false,
+        sessionVersion: { increment: 1 },
       },
     });
 
@@ -241,7 +260,7 @@ export async function updateEmail(data: { newEmail: string }): Promise<ActionRes
     });
 
     // Send verification email to new address
-    await sendVerificationEmail(newEmail, token, user.fullName);
+    await sendVerificationEmail(newEmail, token, escapeHtml(user.fullName));
 
     revalidatePath("/profile");
 

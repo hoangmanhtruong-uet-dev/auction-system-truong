@@ -3,12 +3,20 @@
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { AuditAction, UserRole } from "@prisma/client";
 
-import { requireAuth } from "@/src/lib/auth";
+import { createAdminAuditLog } from "@/src/lib/audit";
+import { requireAuth as requireBaseAuth } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { ActionResult } from "@/src/types";
+import { assertSameOrigin } from "@/src/lib/security-request";
 
 const NETWORK_ERROR_MESSAGE = "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";
+
+async function requireAuth() {
+  await assertSameOrigin();
+  return requireBaseAuth();
+}
 
 const UpdateProfileSchema = z.object({
   fullName: z
@@ -85,6 +93,10 @@ export async function updateProfile(
 const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Vui lòng nhập mật khẩu hiện tại"),
   newPassword: z.string().min(8, "Mật khẩu mới phải có ít nhất 8 ký tự"),
+}).superRefine((value, context) => {
+  if (value.newPassword.length < 10 || value.newPassword.length > 128 || !/[a-z]/.test(value.newPassword) || !/[A-Z]/.test(value.newPassword) || !/[0-9]/.test(value.newPassword)) {
+    context.addIssue({ code: "custom", path: ["newPassword"], message: "Password must be 10-128 characters and include upper-case, lower-case, and a number" });
+  }
 });
 
 export type ChangePasswordInput = z.input<typeof ChangePasswordSchema>;
@@ -138,7 +150,15 @@ export async function changePassword(data: ChangePasswordInput): Promise<ActionR
       data: {
         passwordHash,
         sessionVersion: { increment: 1 },
+        mustChangePassword: false,
       },
+    });
+    await createAdminAuditLog({
+      profileId: user.id,
+      action: AuditAction.ADMIN_ACTION,
+      resourceType: "auth",
+      resourceId: user.id,
+      newValues: { operation: "PASSWORD_CHANGED_AND_SESSIONS_REVOKED" },
     });
 
     revalidatePath("/profile");
@@ -238,10 +258,21 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
   const user = await requireAuth();
 
   try {
-    // Soft delete the profile
+    if (user.role === UserRole.SUPER_ADMIN) {
+      const activeSuperAdmins = await prisma.profile.count({
+        where: { role: UserRole.SUPER_ADMIN, deletedAt: null },
+      });
+      if (activeSuperAdmins <= 1) {
+        return {
+          success: false,
+          error: "Cannot delete the final SUPER_ADMIN.",
+          code: "FORBIDDEN",
+        };
+      }
+    }
     await prisma.profile.update({
       where: { id: user.id },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: new Date(), sessionVersion: { increment: 1 } },
     });
 
     return {
@@ -262,11 +293,21 @@ export async function logoutAllDevices(): Promise<ActionResult<void>> {
   const user = await requireAuth();
 
   try {
+    const revokedAt = new Date();
     await prisma.profile.update({
       where: { id: user.id },
-      data: {
-        sessionVersion: { increment: 1 },
-      },
+      data: { sessionVersion: { increment: 1 } },
+    });
+    await prisma.authSession.updateMany({
+      where: { profileId: user.id, revokedAt: null },
+      data: { revokedAt },
+    });
+    await createAdminAuditLog({
+      profileId: user.id,
+      action: AuditAction.ADMIN_ACTION,
+      resourceType: "auth",
+      resourceId: user.id,
+      newValues: { operation: "ALL_SESSIONS_REVOKED" },
     });
 
     revalidatePath("/profile");

@@ -5,7 +5,7 @@ import { AuditAction, AuctionStatus, BidStatus } from "@prisma/client";
 
 import { formatCurrency } from "@/lib/utils";
 import { getCurrentUser } from "@/src/lib/auth";
-import { finalizeExpiredAuctions, getAuctionWithFreshStatus, refreshAuctionStatus                    } from "@/src/lib/auction-lifecycle";
+import { refreshAuctionStatus } from "@/src/lib/auction-lifecycle";
 import { assertNotSellerBidder, isAuthorizationError, requireActionPermission } from "@/src/lib/authorization";
 import { error, type AppErrorCode } from "@/src/lib/error-codes";
 import { logError, normalizeError } from "@/src/lib/error-handling";
@@ -345,7 +345,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
   }
 
   try {
-    const rateLimit = checkRateLimit(`bid:${user.id}:${parsed.data.auctionId}`, {
+    const rateLimit = await checkRateLimit(`bid:${user.id}:${parsed.data.auctionId}`, {
       limit: BID_RATE_LIMIT,
       windowMs: BID_RATE_LIMIT_WINDOW_MS,
     });
@@ -368,6 +368,27 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           userId: user.id,
           auctionId: parsed.data.auctionId,
         });
+      }
+      if (parsed.data.idempotencyKey) {
+        const replayedBid = await tx.bid.findUnique({
+          where: { idempotencyKey: parsed.data.idempotencyKey },
+          select: { id: true, auctionId: true, bidderId: true, amount: true },
+        });
+        if (replayedBid) {
+          if (replayedBid.auctionId !== parsed.data.auctionId || replayedBid.bidderId !== user.id) {
+            throw new BidFlowError("FORBIDDEN", "Idempotency key is already in use.");
+          }
+          return {
+            createdBid: replayedBid,
+            autoBidsPlaced: 0,
+            shouldAutoExtend: false,
+            nextEndsAt: null,
+            previousPrice: replayedBid.amount,
+            previousWinnerId: replayedBid.bidderId,
+            bidderName: user.fullName,
+            replayed: true,
+          };
+        }
       }
 
       const now = new Date();
@@ -476,7 +497,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       const freezeResult = await freezeBalance(
         user.id,
         auction.id,
-        "pending", /* bidId tạm, sẽ update sau khi tạo bid thật */
+        "pending",
         bidAmount,
         `Khóa tiền đặt giá cho phiên #${auction.id}`,
         tx,
@@ -515,6 +536,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
           auctionId: auction.id,
           bidderId: user.id,
           amount: bidAmount,
+          idempotencyKey: parsed.data.idempotencyKey,
           isAutoBid: parsed.data.isAutoBid,
           autoBidMaxPrice,
           status: BidStatus.ACTIVE,
@@ -528,7 +550,10 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       });
 
       /* ── Update freeze record with real bidId ── */
-      const userWallet = await tx.wallet.findUnique({ where: { profileId: user.id }, select: { id: true } });
+      const userWallet = await tx.wallet.findUnique({
+        where: { profileId: user.id },
+        select: { id: true },
+      });
       if (userWallet) {
         await tx.balanceFreeze.updateMany({
           where: { walletId: userWallet.id, auctionId: auction.id, bidId: "pending" },
@@ -622,7 +647,10 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         });
 
         /* ── Update auto-freeze record with real bidId ── */
-        const challengerWallet = await tx.wallet.findUnique({ where: { profileId: challenger.bidderId }, select: { id: true } });
+        const challengerWallet = await tx.wallet.findUnique({
+          where: { profileId: challenger.bidderId },
+          select: { id: true },
+        });
         if (challengerWallet) {
           await tx.balanceFreeze.updateMany({
             where: { walletId: challengerWallet.id, auctionId: auction.id, bidId: "pending-auto" },
@@ -702,10 +730,11 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
         previousPrice: auction.currentPrice,
         previousWinnerId: auction.winnerId,
         bidderName,
+        replayed: false,
       };
     });
 
-    try {
+    if (!result.replayed) try {
       await enqueueBidSideEffects({
         auctionId: result.createdBid.auctionId,
         bidId: result.createdBid.id,
@@ -721,7 +750,7 @@ export async function placeBid(data: PlaceBidInput): Promise<ActionResult<{
       console.error("Failed to enqueue bid side effects:", infraError);
     }
 
-    if (result.shouldAutoExtend && result.nextEndsAt) {
+    if (!result.replayed && result.shouldAutoExtend && result.nextEndsAt) {
       try {
         await scheduleAuctionExpiry(result.createdBid.auctionId, result.nextEndsAt);
       } catch (infraError) {
@@ -803,11 +832,6 @@ export async function cancelAutoBid(auctionId: string): Promise<ActionResult<{ a
 }
 
 export async function getAuctionById(auctionId: string) {
-  try {
-    await getAuctionWithFreshStatus(auctionId);
-  } catch {
-    // Keep existing behavior: return auction serialization if possible
-  }
   try {
     const auction = await prisma.auction.findFirst({
       where: {
@@ -931,12 +955,6 @@ export async function listSellerProducts(): Promise<ActionResult<SellerProductIt
   }
 
   try {
-    try {
-      await finalizeExpiredAuctions(prisma, 100);
-    } catch (refreshError) {
-      console.error("List seller products lifecycle refresh failed:", refreshError);
-    }
-
     const auctions = await prisma.auction.findMany({
       where: {
         sellerId: user.id,
@@ -1013,7 +1031,6 @@ export async function listSellerProducts(): Promise<ActionResult<SellerProductIt
 
 export async function deleteSellerProduct(auctionId: string): Promise<ActionResult<{ auctionId: string }>> {
   const user = await getCurrentUser();
-
   if (!user) {
     return { success: false, error: LOGIN_REQUIRED_MESSAGE, code: "AUTH_REQUIRED" };
   }
@@ -1097,12 +1114,6 @@ export async function deleteSellerProduct(auctionId: string): Promise<ActionResu
 
 export async function listAuctions(filter?: { status?: string; sellerId?: string; take?: number }) {
   try {
-    await finalizeExpiredAuctions(prisma, 100);
-  } catch {
-    // Keep list reads available even if a background lifecycle refresh fails.
-  }
-
-  try {
     const status = normalizeStatus(filter?.status);
     const auctions = await prisma.auction.findMany({
       where: {
@@ -1154,7 +1165,7 @@ export async function listAuctions(filter?: { status?: string; sellerId?: string
         },
       },
       orderBy: [{ status: "asc" }, { endsAt: "asc" }, { createdAt: "desc" }],
-      take: filter?.take,
+      take: Math.min(Math.max(filter?.take ?? 50, 1), 100),
     });
 
     return {

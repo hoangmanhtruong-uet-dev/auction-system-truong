@@ -1,7 +1,7 @@
 "use client";
 
 import type { UserRole } from "@prisma/client";
-import { Ban, Eye, RotateCcw, ShieldAlert } from "lucide-react";
+import { Ban, Eye, KeyRound, RotateCcw, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { toggleUserBlock, updateUserRole } from "@/src/actions/admin-users";
+import { resetStaffPassword, toggleUserBlock, updateUserRole } from "@/src/actions/admin-users";
 
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 
@@ -29,6 +29,8 @@ export function UserActions({
   const [nextRole, setNextRole] = useState<UserRole>(user.role);
   const [roleReason, setRoleReason] = useState("");
   const [rolePending, setRolePending] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const isSelf = user.id === currentAdminId;
   const canToggleBlock = user.role !== "ADMIN" && user.role !== "SUPER_ADMIN" && !isSelf;
   const isBlocked = Boolean(user.deletedAt);
@@ -54,6 +56,16 @@ export function UserActions({
           </Button>
         </TooltipTrigger>
         <TooltipContent>Chi tiet dang hien thi truc tiep tren bang</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button type="button" variant="ghost" size="icon-sm" disabled={isSelf} aria-label="Reset password" onClick={() => setResetDialogOpen(true)}>
+              <KeyRound className="size-4" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Reset password and revoke all sessions</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -113,6 +125,28 @@ export function UserActions({
           onChanged(user.id, { deletedAt: result.user.deletedAt ? result.user.deletedAt.toISOString() : null });
         }}
       />
+      <ConfirmActionDialog
+        open={resetDialogOpen && !temporaryPassword}
+        onOpenChange={setResetDialogOpen}
+        title="Reset staff password"
+        description="All existing sessions will be revoked. The temporary password is displayed once."
+        confirmLabel="Reset password"
+        requireReason
+        onConfirm={async (reason) => {
+          const result = await resetStaffPassword(user.id, reason ?? "");
+          setTemporaryPassword(result.temporaryPassword);
+        }}
+      />
+      <Dialog open={Boolean(temporaryPassword)} onOpenChange={(open) => { if (!open) { setTemporaryPassword(null); setResetDialogOpen(false); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Temporary password</DialogTitle>
+            <DialogDescription>Copy it now. It is not stored or shown again, and the user must change it at next login.</DialogDescription>
+          </DialogHeader>
+          <code className="break-all rounded-md bg-muted p-3 text-sm">{temporaryPassword}</code>
+          <DialogFooter><Button type="button" onClick={() => { setTemporaryPassword(null); setResetDialogOpen(false); }}>Done</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
         <DialogContent>
           <DialogHeader>

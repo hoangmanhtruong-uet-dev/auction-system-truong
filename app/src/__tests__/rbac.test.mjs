@@ -76,6 +76,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     "auctions.finalize", "users.suspend", "users.verify",
     "payments.read.all", "payments.mark_paid",
     "users.update.role", "settings.read", "settings.update",
+    "notifications.read.all",
   ]),
   SUPER_ADMIN: Object.freeze([
     "admin.area.access",
@@ -89,6 +90,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     "auctions.finalize", "users.suspend", "users.verify",
     "payments.read.all", "payments.mark_paid",
     "users.update.role", "settings.read", "settings.update",
+    "notifications.read.all",
     "permissions.manage",
   ]),
 });

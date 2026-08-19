@@ -11,6 +11,18 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SEED !== 'true') {
+  throw new Error('Demo seed is disabled. Set ALLOW_DEMO_SEED=true only in development/test.');
+}
+
+const configuredDemoPassword = process.env.DEMO_SEED_PASSWORD;
+const configuredAdminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+if (!configuredDemoPassword || configuredDemoPassword.length < 12 || !configuredAdminEmail) {
+  throw new Error('DEMO_SEED_PASSWORD (12+ chars) and SEED_ADMIN_EMAIL are required.');
+}
+const DEMO_SEED_PASSWORD: string = configuredDemoPassword;
+const DEMO_ADMIN_EMAIL: string = configuredAdminEmail;
+
 const DEMO_AUCTION_KEYS = [
   'Bức Tranh Sơn Mài "Hà Nội Xưa"',
   'Đồng Hồ Cổ Pháp 1920',
@@ -30,7 +42,7 @@ async function upsertProfile(data: {
   createdAt: Date;
   passwordHash?: string;
 }) {
-  const passwordHash = data.passwordHash || await bcrypt.hash('password123', 12);
+  const passwordHash = data.passwordHash || await bcrypt.hash(DEMO_SEED_PASSWORD, 12);
   
   return prisma.profile.upsert({
     where: { email: data.email },
@@ -52,7 +64,7 @@ async function main() {
   console.log('Starting seed...');
 
   const admin = await upsertProfile({
-    email: process.env.SUPER_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'admin@autobid.vn',
+    email: DEMO_ADMIN_EMAIL,
     emailVerified: true,
     fullName: 'Admin System',
     phone: '0900000000',

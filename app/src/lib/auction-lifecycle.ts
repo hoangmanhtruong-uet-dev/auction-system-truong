@@ -1,9 +1,9 @@
-import { AuditAction, AuctionStatus, BidStatus, NotificationType, type Prisma, type PrismaClient } from "@prisma/client";
+import { AuditAction, AuctionStatus, BidStatus, FreezeStatus, NotificationType, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { error, type ErrorResult } from "@/src/lib/error-codes";
+import { createOutboxEvents, OUTBOX_EVENT_TYPES, type NewOutboxEvent } from "@/src/lib/outbox";
 import { prisma } from "@/src/lib/prisma";
 import { forfeitFreeze, unfreezeAllForAuction } from "@/src/lib/wallet";
-import { enqueueSettlement } from "@/src/lib/queue";
 
 type AuctionDbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -161,7 +161,14 @@ export async function finishAuction(
   actorId?: string,
   client: AuctionDbClient = prisma,
   now: Date = new Date(),
-) {
+): Promise<Prisma.AuctionGetPayload<Record<string, never>> | ErrorResult> {
+  if (client === prisma) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM auctions WHERE id = ${auctionId} AND deleted_at IS NULL FOR UPDATE`;
+      return finishAuction(auctionId, actorId, tx, now);
+    });
+  }
+
   const auction = await client.auction.findFirst({
     where: { id: auctionId, deletedAt: null },
     include: {
@@ -182,6 +189,10 @@ export async function finishAuction(
 
   if (auction.status === AuctionStatus.CANCELLED) {
     return error("AUCTION_CANCELED", "Phien dau gia da bi huy.");
+  }
+
+  if (auction.status === AuctionStatus.COMPLETED && auction.finishedAt) {
+    return auction;
   }
 
   if (auction.status !== AuctionStatus.COMPLETED) {
@@ -221,51 +232,67 @@ export async function finishAuction(
     });
   }
   // ── Enqueue async settlement if winner exists ──
-  if (winnerId) {
-    const seller = await client.auction.findUnique({
-      where: { id: auctionId },
-      select: { sellerId: true, currentPrice: true },
-    });
-    if (seller) {
-      try {
-        await enqueueSettlement({
-          auctionId,
-          winnerProfileId: winnerId,
-          sellerProfileId: seller.sellerId,
-          finalPrice: seller.currentPrice.toString(),
-        });
-      } catch (e) {
-        console.error(`[AuctionLifecycle] Failed to enqueue settlement for auction ${auctionId}:`, e);
-      }
-    }
-  }
-
   if (shouldNotifyAndAudit) {
-    await client.notification.create({
-      data: {
-        profileId: auction.sellerId,
-        auctionId,
-        type: NotificationType.AUCTION_ENDED,
-        title: "Phien dau gia da ket thuc",
-        message: winnerId
-          ? `Phien dau gia "${auction.title}" da ket thuc va co nguoi thang.`
-          : `Phien dau gia "${auction.title}" da ket thuc nhung chua co luot dat gia.`,
-        metadata: { auctionId, winnerId },
+    const outboxEvents: NewOutboxEvent[] = [
+      {
+        eventType: OUTBOX_EVENT_TYPES.AUCTION_CLOSED,
+        aggregateType: "auction",
+        aggregateId: auctionId,
+        idempotencyKey: `auction:${auctionId}:closed:v1`,
+        payload: { auctionId, winnerId, finalPrice: updated.currentPrice.toString() },
       },
-    });
+      {
+        eventType: OUTBOX_EVENT_TYPES.NOTIFICATION_REQUESTED,
+        aggregateType: "auction",
+        aggregateId: auctionId,
+        idempotencyKey: `auction:${auctionId}:notification:seller-ended:v1`,
+        payload: {
+          type: "AUCTION_ENDED",
+          recipientId: auction.sellerId,
+          auctionId,
+          title: "Phien dau gia da ket thuc",
+          message: winnerId
+            ? `Phien dau gia "${auction.title}" da ket thuc va co nguoi thang.`
+            : `Phien dau gia "${auction.title}" da ket thuc nhung chua co luot dat gia.`,
+          metadata: { auctionId, winnerId },
+          idempotencyKey: `auction:${auctionId}:notification:seller-ended:v1`,
+        },
+      },
+    ];
 
     if (winnerId) {
-      await client.notification.create({
-        data: {
-          profileId: winnerId,
-          auctionId,
-          type: NotificationType.BID_WON,
-          title: "Ban da thang phien dau gia",
-          message: `Chuc mung! Ban da thang phien dau gia "${auction.title}".`,
-          metadata: { auctionId, bidId: winningBid?.id },
+      outboxEvents.push(
+        {
+          eventType: OUTBOX_EVENT_TYPES.SETTLEMENT_REQUESTED,
+          aggregateType: "auction",
+          aggregateId: auctionId,
+          idempotencyKey: `auction:${auctionId}:settlement-requested:v1`,
+          payload: {
+            auctionId,
+            winnerProfileId: winnerId,
+            sellerProfileId: auction.sellerId,
+            finalPrice: updated.currentPrice.toString(),
+          },
         },
-      });
+        {
+          eventType: OUTBOX_EVENT_TYPES.NOTIFICATION_REQUESTED,
+          aggregateType: "auction",
+          aggregateId: auctionId,
+          idempotencyKey: `auction:${auctionId}:notification:winner-confirmed:v1`,
+          payload: {
+            type: "AUCTION_WON",
+            recipientId: winnerId,
+            auctionId,
+            title: "Ban da thang phien dau gia",
+            message: `Chuc mung! Ban da thang phien dau gia "${auction.title}".`,
+            metadata: { auctionId, bidId: winningBid?.id },
+            idempotencyKey: `auction:${auctionId}:notification:winner-confirmed:v1`,
+          },
+        },
+      );
     }
+
+    await createOutboxEvents(client, outboxEvents);
 
     await client.auditLog.create({
       data: {
@@ -421,7 +448,7 @@ export async function processForfeitAuction(
       where: {
         walletId: wallet.id,
         auctionId,
-        status: "ACTIVE" as any,
+        status: FreezeStatus.ACTIVE,
       },
       select: { id: true, amount: true },
     });
@@ -627,15 +654,13 @@ export async function cancelAuction(
 
   // ── Unfreeze all active freezes for this auction ──
   try {
-    // use any to bypass union type limitation; balanceFreeze/wallet models exist at runtime
-    const tx = client as any;
-    const freezes = await tx.balanceFreeze.findMany({
-      where: { auctionId, status: "ACTIVE" },
+    const freezes = await client.balanceFreeze.findMany({
+      where: { auctionId, status: FreezeStatus.ACTIVE },
       select: { walletId: true },
       distinct: ["walletId"],
     });
     for (const f of freezes) {
-      const wallet = await tx.wallet.findUnique({
+      const wallet = await client.wallet.findUnique({
         where: { id: f.walletId },
         select: { profileId: true },
       });
@@ -643,8 +668,9 @@ export async function cancelAuction(
         await unfreezeAllForAuction(wallet.profileId, auctionId, client);
       }
     }
-  } catch (e) {
-    console.error(`[AuctionLifecycle] Failed to unfreeze freezes for auction ${auctionId}:`, e);
+  } catch (cause) {
+    console.error(`[AuctionLifecycle] Failed to unfreeze freezes for auction ${auctionId}:`, cause);
+    throw cause;
   }
 
   return updated;

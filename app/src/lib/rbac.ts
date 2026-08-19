@@ -21,6 +21,7 @@ export const PERMISSIONS = [
   "bids.read.all",
   "watchlist.manage.self",
   "notifications.read.self",
+  "notifications.read.all",
   "notifications.manage.self",
   "users.read.all",
   "users.update.role",
@@ -106,6 +107,7 @@ const ADMIN_PERMISSIONS = [
   ...MODERATOR_PERMISSIONS,
   ...FINANCE_PERMISSIONS,
   "users.update.role",
+  "notifications.read.all",
   "settings.read",
   "settings.update",
 ] as const satisfies readonly Permission[];

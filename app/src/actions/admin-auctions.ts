@@ -5,8 +5,7 @@ import { AuditAction, AuctionStatus } from "@prisma/client";
 
 import { isAuthorizationError, requireActionPermission } from "@/src/lib/authorization";
 import { prisma } from "@/src/lib/prisma";
-import { createAdminAuditLog } from "@/src/lib/audit";
-import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
+import { emitSecurityEvent } from "@/src/lib/security-events";
 
 export type AdminAuction = {
   id: string;
@@ -39,8 +38,6 @@ export async function listAdminAuctions() {
   }
 
   try {
-    await finalizeExpiredAuctions(prisma, 100);
-
     const auctions = await prisma.auction.findMany({
       where: {
         deletedAt: null,
@@ -137,33 +134,28 @@ export async function adminMarkAuctionPaid(auctionId: string) {
     }
 
     const paidAt = new Date();
-    const updatedAuction = await prisma.auction.update({
-      where: { id: auctionId },
-      data: {
-        paidAt,
-        paidById: user.id,
-      },
-    });
-
-    await createAdminAuditLog({
-      profileId: user.id,
-      action: AuditAction.ADMIN_ACTION,
-      resourceType: "auction",
-      resourceId: auctionId,
-      oldValues: {
-        paidAt: null,
-      },
-      newValues: {
-        operation: "AUCTION_MARKED_PAID",
-        paidAt: paidAt.toISOString(),
-        amount: auction.currentPrice.toString(),
-      },
+    const updatedAuction = await prisma.$transaction(async (tx) => {
+      const updated = await tx.auction.updateMany({
+        where: { id: auctionId, status: AuctionStatus.COMPLETED, winnerId: { not: null }, paidAt: null },
+        data: { paidAt, paidById: user.id },
+      });
+      if (updated.count !== 1) throw new Error("Payment state changed; reload before retrying.");
+      const result = await tx.auction.findUniqueOrThrow({ where: { id: auctionId } });
+      await tx.auditLog.create({
+        data: {
+          profileId: user.id, action: AuditAction.ADMIN_ACTION, resourceType: "auction", resourceId: auctionId,
+          oldValues: { paidAt: null },
+          newValues: { operation: "AUCTION_MARKED_PAID", paidAt: paidAt.toISOString(), amount: auction.currentPrice.toString() },
+        },
+      });
+      return result;
     });
 
     revalidatePath("/admin");
     revalidatePath("/admin/auctions");
     revalidatePath("/admin/payments");
     revalidatePath(`/auctions/${auctionId}`);
+    emitSecurityEvent("mark_paid", { actorId: user.id, resourceId: auctionId });
 
     return {
       success: true,
@@ -218,35 +210,27 @@ export async function adminCancelAuction(auctionId: string, reason?: string) {
     const previousStatus = auction.status;
     const now = new Date();
 
-    const updatedAuction = await prisma.auction.update({
-      where: { id: auctionId },
-      data: {
-        status: AuctionStatus.CANCELLED,
-        canceledAt: now,
-        canceledById: user.id,
-        cancelReason: reason.trim(),
-      },
-    });
-
-    // Create audit log
-    await createAdminAuditLog({
-      profileId: user.id,
-      action: AuditAction.AUCTION_CANCELLED,
-      resourceType: "auction",
-      resourceId: auctionId,
-      oldValues: {
-        status: previousStatus,
-      },
-      newValues: {
-        status: updatedAuction.status,
-        cancelReason: reason.trim(),
-      },
+    const updatedAuction = await prisma.$transaction(async (tx) => {
+      const updated = await tx.auction.updateMany({
+        where: { id: auctionId, status: previousStatus, paidAt: auction.paidAt },
+        data: { status: AuctionStatus.CANCELLED, canceledAt: now, canceledById: user.id, cancelReason: reason.trim() },
+      });
+      if (updated.count !== 1) throw new Error("Auction state changed; reload before retrying.");
+      const result = await tx.auction.findUniqueOrThrow({ where: { id: auctionId } });
+      await tx.auditLog.create({
+        data: {
+          profileId: user.id, action: AuditAction.AUCTION_CANCELLED, resourceType: "auction", resourceId: auctionId,
+          oldValues: { status: previousStatus }, newValues: { status: result.status, cancelReason: reason.trim() },
+        },
+      });
+      return result;
     });
 
     // Revalidate paths
     revalidatePath("/admin/auctions");
     revalidatePath("/auctions");
     revalidatePath(`/auctions/${auctionId}`);
+    emitSecurityEvent("auction_cancelled", { actorId: user.id, resourceId: auctionId });
 
     return {
       success: true,

@@ -13,6 +13,8 @@
 
 import { prisma } from "@/src/lib/prisma";
 import { processForfeitAuction } from "@/src/lib/auction-lifecycle";
+import { AuctionStatus } from "@prisma/client";
+import type { ErrorResult } from "@/src/lib/error-codes";
 
 const SCAN_INTERVAL_MS = 60_000; // every 1 minute
 const BATCH_SIZE = 100;
@@ -23,7 +25,7 @@ async function scanAndForfeit(): Promise<void> {
   const overdue = await prisma.auction.findMany({
     where: {
       deletedAt: null,
-      status: "COMPLETED" as any,
+      status: AuctionStatus.COMPLETED,
       winnerId: { not: null },
       paidAt: null,
       payByDeadline: { lte: now },
@@ -37,8 +39,8 @@ async function scanAndForfeit(): Promise<void> {
   for (const auction of overdue) {
     try {
       const result = await processForfeitAuction(auction.id);
-      if (!result || (result as any).code) {
-        console.error(`[ForfeitWorker] Failed to forfeit auction ${auction.id}:`, (result as any).message);
+      if (isErrorResult(result)) {
+        console.error(`[ForfeitWorker] Failed to forfeit auction ${auction.id}:`, result.message);
       } else {
         console.log(`[ForfeitWorker] Forfeited auction ${auction.id}`);
       }
@@ -46,6 +48,10 @@ async function scanAndForfeit(): Promise<void> {
       console.error(`[ForfeitWorker] Error processing auction ${auction.id}:`, e);
     }
   }
+}
+
+function isErrorResult(result: Record<string, unknown> | ErrorResult): result is ErrorResult {
+  return "ok" in result && result.ok === false;
 }
 
 async function start(): Promise<void> {

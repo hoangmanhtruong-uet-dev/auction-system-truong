@@ -35,7 +35,7 @@ export function updateSession(request: NextRequest) {
   }
 
   const payload = verifyToken(token);
-  if (!payload?.userId || !payload.role) {
+  if (!payload?.userId || !payload.role || !payload.sessionId) {
     return redirectToLogin(request, pathname);
   }
 

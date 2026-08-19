@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?required}
+      MYSQL_USER: ${MYSQL_USER:?required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?required}
+    volumes: ["staging_mysql_data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?required}"]
+    volumes: ["staging_redis_data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  web:
+    image: ${APP_IMAGE:?required}
+    command: ["node", "server.js"]
+    env_file: ["${STAGING_ENV_FILE:?required}"]
+    environment:
+      REQUIRE_WORKER_HEARTBEAT: "true"
+    ports: ["3000:3000"]
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  worker:
+    image: ${WORKER_IMAGE:?required}
+    env_file: ["${STAGING_ENV_FILE:?required}"]
+    environment:
+      FINANCIAL_OPERATIONS_ENABLED: "false"
+      REAL_MONEY_PAYMENTS_ENABLED: "false"
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+volumes:
+  staging_mysql_data:
+  staging_redis_data:

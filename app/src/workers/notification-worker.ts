@@ -12,16 +12,8 @@
 import { Worker, Job } from "bullmq";
 import { prisma } from "@/src/lib/prisma";
 import { NotificationType } from "@prisma/client";
-import type { NotificationJob } from "@/src/lib/queue";
-
-const workerConnection = {
-  host: process.env.REDIS_HOST ?? "localhost",
-  port: Number(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD ?? undefined,
-  db: Number(process.env.REDIS_DB) || 0,
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-};
+import { NotificationJobSchema, QUEUE_NAMES, type NotificationJob } from "@/src/lib/queue";
+import { getBullMqConnection } from "@/src/lib/redis";
 
 const TYPE_MAP: Record<NotificationJob["type"], NotificationType> = {
   BID_OUTBID: NotificationType.BID_OUTBID,
@@ -31,10 +23,26 @@ const TYPE_MAP: Record<NotificationJob["type"], NotificationType> = {
 };
 
 async function processNotification(job: Job<NotificationJob>): Promise<void> {
-  const data = job.data;
+  const data = NotificationJobSchema.parse(job.data);
   const typeMapped = TYPE_MAP[data.type] ?? NotificationType.SYSTEM;
 
-  // Check if an identical notification was recently created to prevent double-writes/duplicates
+  if (data.idempotencyKey) {
+    await prisma.notification.createMany({
+      data: [{
+        idempotencyKey: data.idempotencyKey,
+        profileId: data.recipientId,
+        auctionId: data.auctionId,
+        type: typeMapped,
+        title: data.title,
+        message: data.message,
+        metadata: data.metadata ? JSON.parse(JSON.stringify(data.metadata)) : undefined,
+      }],
+      skipDuplicates: true,
+    });
+    return;
+  }
+
+  // Legacy jobs without an idempotency key retain bounded duplicate protection.
   const oneMinuteAgo = new Date(Date.now() - 60_000);
   const existing = await prisma.notification.findFirst({
     where: {
@@ -73,25 +81,16 @@ async function processNotification(job: Job<NotificationJob>): Promise<void> {
 
 // ─── Start Worker ────────────────────────────────────────────────────────────
 
-const worker = new Worker("notifications", processNotification, {
-  connection: workerConnection,
-  concurrency: 20,
-  limiter: {
-    max: 200,
-    duration: 1000,
-  },
-});
-
-worker.on("completed", (job) => {
-  console.log(`[NotifWorker] Job ${job.id} completed`);
-});
-
-worker.on("failed", (job, err) => {
-  console.error(`[NotifWorker] Job ${job?.id} failed:`, err.message);
-});
-
-worker.on("error", (err) => {
-  console.error("[NotifWorker] Worker error:", err.message);
-});
-
-console.log("[NotifWorker] Started. Waiting for jobs...");
+export function createNotificationWorker(): Worker<NotificationJob> {
+  const worker = new Worker<NotificationJob>(QUEUE_NAMES.NOTIFICATIONS, processNotification, {
+    connection: getBullMqConnection(),
+    prefix: process.env.QUEUE_PREFIX ?? "autobid",
+    concurrency: Number(process.env.NOTIFICATION_WORKER_CONCURRENCY ?? "20"),
+    autorun: false,
+    limiter: { max: 200, duration: 1000 },
+  });
+  worker.on("completed", (job) => console.info(JSON.stringify({ event: "job_completed", queue: QUEUE_NAMES.NOTIFICATIONS, jobId: job.id })));
+  worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job_failed", queue: QUEUE_NAMES.NOTIFICATIONS, jobId: job?.id, message: error.message })));
+  worker.on("error", (error) => console.error(JSON.stringify({ event: "worker_error", queue: QUEUE_NAMES.NOTIFICATIONS, message: error.message })));
+  return worker;
+}

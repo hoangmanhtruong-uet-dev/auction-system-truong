@@ -100,6 +100,41 @@ npm run build
 npm run start
 ```
 
+## Runtime processes and health
+
+Web and background workers run as separate processes:
+
+```bash
+# terminal 1
+npm run dev
+
+# terminal 2 (requires DATABASE_URL, REDIS_URL and worker variables)
+npm run start:worker
+```
+
+Production/staging commands:
+
+```bash
+npm run build
+npm run start:web
+npm run start:worker
+```
+
+Health endpoints:
+
+- `GET /api/health/live` checks that the web process is alive.
+- `GET /api/health/ready` checks environment validation, MySQL, Redis, queue access and optionally the worker heartbeat.
+
+Set `REQUIRE_WORKER_HEARTBEAT=true` in staging so readiness fails when the required worker process is stale. Financial processing is fail-closed: keep `FINANCIAL_OPERATIONS_ENABLED=false` and `REAL_MONEY_PAYMENTS_ENABLED=false` until the separate settlement/ledger/payment review is complete.
+
+Docker targets and Compose:
+
+```bash
+docker build --target web -t autobid-web ./app
+docker build --target worker -t autobid-worker ./app
+docker compose -f compose.local.yml up --build
+```
+
 ## Cáº¥u trĂºc project
 
 ```text

@@ -3,7 +3,6 @@
 import { AuctionStatus } from "@prisma/client";
 
 import { isAuthorizationError, requireAdminAreaAccess } from "@/src/lib/authorization";
-import { finalizeExpiredAuctions } from "@/src/lib/auction-lifecycle";
 import { prisma } from "@/src/lib/prisma";
 
 export type AdminDashboardData = {
@@ -48,8 +47,6 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   if (isAuthorizationError(actor)) {
     throw new Error(actor.message);
   }
-  await finalizeExpiredAuctions(prisma, 100);
-
   const now = new Date();
   const next24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 

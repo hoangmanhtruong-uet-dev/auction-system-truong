@@ -12,8 +12,7 @@
  * FREEZE ──(cancel/forfeit)──> FORFEITED
  */
 
-import type { Prisma, PrismaClient } from "@prisma/client";
-import { FreezeStatus, TransactionType } from "@prisma/client";
+import { FreezeStatus, Prisma, TransactionType, type PrismaClient } from "@prisma/client";
 import { error, success, type ErrorResult, type SuccessResult } from "@/src/lib/error-codes";
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
@@ -29,9 +28,9 @@ export async function ensureWallet(
     await client.wallet.create({
       data: { profileId, balance: 0n, totalFrozen: 0n },
     });
-  } catch (e: any) {
+  } catch (cause: unknown) {
     // P2002 = unique constraint violation (wallet already exists)
-    if (e?.code !== "P2002") throw e;
+    if (!(cause instanceof Prisma.PrismaClientKnownRequestError) || cause.code !== "P2002") throw cause;
   }
   const w = await client.wallet.findUniqueOrThrow({
     where: { profileId },

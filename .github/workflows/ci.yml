@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: autobid_test
+          MYSQL_USER: autobid
+          MYSQL_PASSWORD: test-password
+          MYSQL_ROOT_PASSWORD: test-root-password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptest-root-password"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: mysql://autobid:test-password@127.0.0.1:3306/autobid_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      JWT_SECRET: ci-only-jwt-secret-at-least-32-characters
+      CRON_SECRET: ci-only-cron-secret-at-least-32-characters
+      ADMIN_PROFILE_ID: ci-admin
+      REAL_MONEY_PAYMENTS_ENABLED: "false"
+      FINANCIAL_OPERATIONS_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan (full Git history)
+        working-directory: .
+        run: docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.24.2 git --redact=100 --no-banner /repo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.0
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx prisma validate --schema=prisma/schema.prisma
+      - run: npx prisma generate --schema=prisma/schema.prisma
+      - run: npx prisma migrate deploy --schema=prisma/schema.prisma
+      - run: npx prisma migrate status --schema=prisma/schema.prisma
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:security
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=high
+      - name: Reject tracked environment files
+        shell: bash
+        run: |
+          if git ls-files | grep -E '(^|/)\.env(\.|$)' | grep -vE '(^|/)\.env\.example$'; then
+            echo "Tracked environment file detected"
+            exit 1
+          fi
+      - name: Validate local Compose configuration
+        run: docker compose -f ../compose.local.yml config --quiet
+      - name: Validate staging Compose configuration
+        env:
+          MYSQL_DATABASE: autobid_test
+          MYSQL_USER: autobid
+          MYSQL_PASSWORD: ci-only-password
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+          REDIS_PASSWORD: ci-only-password
+          APP_IMAGE: autobid-web:ci
+          WORKER_IMAGE: autobid-worker:ci
+          STAGING_ENV_FILE: ./app/.env.example
+        run: docker compose -f ../compose.staging.yml config --quiet
+      - name: Build web image
+        run: docker build --target web -t autobid-web:ci .
+      - name: Build worker image
+        run: docker build --target worker -t autobid-worker:ci .

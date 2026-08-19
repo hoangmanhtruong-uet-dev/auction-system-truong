@@ -1,0 +1,68 @@
+name: auction-system-verification
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: auction_system_test
+      MYSQL_USER: verification_user
+      MYSQL_PASSWORD: verification_password
+      MYSQL_ROOT_PASSWORD: verification_root_password
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    tmpfs: ["/var/lib/mysql"]
+    ports: ["127.0.0.1:3308:3306"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uverification_user", "-pverification_password"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    tmpfs: ["/data"]
+    ports: ["127.0.0.1:6381:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: auction-system-worker:verification
+    user: "1001:1001"
+    command: ["./node_modules/.bin/prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
+    environment: &runtime-environment
+      NODE_ENV: production
+      DATABASE_URL: mysql://verification_user:verification_password@mysql:3306/auction_system_test
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: verification-only-jwt-secret-at-least-32-characters
+      CRON_SECRET: verification-only-cron-secret-at-least-32-characters
+      ADMIN_PROFILE_ID: disabled
+      APP_VERSION: verification
+      QUEUE_PREFIX: autobid-verification
+      REQUIRE_WORKER_HEARTBEAT: "true"
+      REQUIRED_WORKER_NAME: verification-worker
+      WORKER_NAME: verification-worker
+      WORKER_HEARTBEAT_INTERVAL_MS: "1000"
+      WORKER_HEARTBEAT_TTL_SECONDS: "5"
+      FINANCIAL_OPERATIONS_ENABLED: "false"
+      REAL_MONEY_PAYMENTS_ENABLED: "false"
+    depends_on:
+      mysql: { condition: service_healthy }
+
+  worker:
+    image: auction-system-worker:verification
+    environment: *runtime-environment
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    image: auction-system-web:verification
+    environment: *runtime-environment
+    ports: ["127.0.0.1:3002:3000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      worker: { condition: service_started }

@@ -4,9 +4,11 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getJwtSecret } from "@/src/lib/jwt";
 import { UserRole } from "@prisma/client";
+import { createHash } from "node:crypto";
+import { isSessionFresh } from "@/src/lib/auth-policy";
 
 export const AUTH_COOKIE_NAME = "auth-token";
-export const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() || "admin@autobid.vn";
+const SESSION_IDLE_TIMEOUT_MS = Number(process.env.SESSION_IDLE_TIMEOUT_SECONDS ?? "1800") * 1000;
 
 export type SafeUser = {
   id: string;
@@ -16,6 +18,7 @@ export type SafeUser = {
   phone: string | null;
   role: UserRole;
   sessionVersion: number;
+  mustChangePassword: boolean;
   avatarUrl: string | null;
   createdAt: Date;
   address: string | null;
@@ -26,7 +29,11 @@ export type SafeUser = {
 };
 
 export function isPrimaryAdmin(user: Pick<SafeUser, "email" | "role">) {
-  return user.role === UserRole.SUPER_ADMIN && user.email.toLowerCase() === SUPER_ADMIN_EMAIL;
+  return user.role === UserRole.SUPER_ADMIN;
+}
+
+export function hashSessionToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 export async function getSessionUserId(): Promise<string | null> {
@@ -49,7 +56,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
     try {
       getJwtSecret();
     } catch (e) {
-      console.error("[Auth] JWT_SECRET not configured:", e);
+      console.error("[Auth] JWT_SECRET is not configured", e instanceof Error ? e.name : "unknown");
     }
 
     const cookieStore = await cookies();
@@ -63,33 +70,64 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
     if (!userId) return null;
 
     try {
-      const profile = await prisma.profile.findUnique({
-        where: { id: userId },
+      if (!payload?.sessionId) return null;
+
+      const now = new Date();
+      const idleCutoff = new Date(now.getTime() - SESSION_IDLE_TIMEOUT_MS);
+      const session = await prisma.authSession.findFirst({
+        where: {
+          id: payload.sessionId,
+          profileId: userId,
+          tokenHash: hashSessionToken(token),
+          revokedAt: null,
+          expiresAt: { gt: now },
+          lastSeenAt: { gt: idleCutoff },
+          sessionVersion: payload.sessionVersion,
+        },
         select: {
           id: true,
-          email: true,
-          emailVerified: true,
-          fullName: true,
-          phone: true,
-          role: true,
-          sessionVersion: true,
-          avatarUrl: true,
-          createdAt: true,
-          address: true,
-          city: true,
-          gender: true,
-          birthday: true,
-          bio: true,
-          deletedAt: true,
+          lastSeenAt: true,
+          expiresAt: true,
+          profile: {
+            select: {
+              id: true,
+              email: true,
+              emailVerified: true,
+              fullName: true,
+              phone: true,
+              role: true,
+              sessionVersion: true,
+              mustChangePassword: true,
+              avatarUrl: true,
+              createdAt: true,
+              address: true,
+              city: true,
+              gender: true,
+              birthday: true,
+              bio: true,
+              deletedAt: true,
+            },
+          },
         },
       });
+
+      const profile = session?.profile;
 
       if (!profile || profile.deletedAt) {
         return null;
       }
 
+      if (!isSessionFresh(session.lastSeenAt, session.expiresAt, now, SESSION_IDLE_TIMEOUT_MS)) return null;
+
       if (payload?.sessionVersion !== profile.sessionVersion) {
         return null;
+      }
+
+      if (now.getTime() - session.lastSeenAt.getTime() > 60_000) {
+        await prisma.authSession.updateMany({
+          where: { id: session.id, revokedAt: null },
+          data: { lastSeenAt: now },
+        });
       }
 
       return {
@@ -100,6 +138,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         phone: profile.phone,
         role: profile.role,
         sessionVersion: profile.sessionVersion,
+        mustChangePassword: profile.mustChangePassword,
         avatarUrl: profile.avatarUrl,
         createdAt: profile.createdAt,
         address: profile.address,
@@ -109,48 +148,8 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
         bio: profile.bio,
       };
     } catch (profileError) {
-      console.error("[Auth] extended profile read failed, falling back to core profile:", profileError);
-
-      const profile = await prisma.profile.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          email: true,
-          emailVerified: true,
-          fullName: true,
-          phone: true,
-          role: true,
-          sessionVersion: true,
-          avatarUrl: true,
-          createdAt: true,
-          deletedAt: true,
-        },
-      });
-
-      if (!profile || profile.deletedAt) {
-        return null;
-      }
-
-      if (payload?.sessionVersion !== profile.sessionVersion) {
-        return null;
-      }
-
-      return {
-        id: profile.id,
-        email: profile.email,
-        emailVerified: profile.emailVerified,
-        fullName: profile.fullName,
-        phone: profile.phone,
-        role: profile.role,
-        sessionVersion: profile.sessionVersion,
-        avatarUrl: profile.avatarUrl,
-        createdAt: profile.createdAt,
-        address: null,
-        city: null,
-        gender: null,
-        birthday: null,
-        bio: null,
-      };
+      console.error("[Auth] session lookup failed", profileError instanceof Error ? profileError.name : "unknown");
+      return null;
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
@@ -169,7 +168,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
       return null;
     }
 
-    console.error("[Auth] getCurrentUser error:", err);
+    console.error("[Auth] getCurrentUser failed", err instanceof Error ? err.name : "unknown");
     return null;
   }
 }

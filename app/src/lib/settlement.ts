@@ -11,7 +11,7 @@
  */
 
 import { AuctionStatus, TransactionType } from "@prisma/client";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { settleFreeze, transferBalance } from "@/src/lib/wallet";
 import { error, success, type ErrorResult, type SuccessResult } from "@/src/lib/error-codes";
 
@@ -38,7 +38,7 @@ export async function settleAuction(
   winnerProfileId: string,
   sellerProfileId: string,
   finalPrice: bigint,
-  client: PrismaClient,
+  client: PrismaClient | Prisma.TransactionClient,
 ): Promise<SuccessResult<SettlementResult> | ErrorResult> {
   // 1. Check duplicate settlement
   const auction = await client.auction.findUnique({

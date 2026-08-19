@@ -12,7 +12,7 @@
  * Or schedule via cron (see INFRASTRUCTURE.md).
  */
 
-import { FreezeStatus } from "@prisma/client";
+import { FreezeStatus, NotificationType } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 
 interface ReconciliationReport {
@@ -69,7 +69,6 @@ export async function runReconciliation(): Promise<ReconciliationReport> {
   const orphanFreezes = await prisma.balanceFreeze.findMany({
     where: {
       status: FreezeStatus.ACTIVE,
-      auctionId: { not: null as any },
     },
     select: { id: true, auctionId: true, amount: true },
   });
@@ -255,16 +254,18 @@ export async function runReconciliation(): Promise<ReconciliationReport> {
       console.warn("[Reconciliation] SLACK_FINANCE_WEBHOOK_URL not set; skip Slack alert");
     }
 
-    try {
-      await (prisma.notification as any).create({
+    const adminProfileId = process.env.ADMIN_PROFILE_ID;
+    if (adminProfileId) {
+      await prisma.notification.create({
         data: {
-          type: "SYSTEM",
+          profileId: adminProfileId,
+          type: NotificationType.SYSTEM,
           title: "Reconciliation Alert",
           message: `Found ${discrepancies.length} financial discrepancy(ies). Check logs for details.`,
         },
       });
-    } catch (e) {
-      console.error("[Reconciliation] Failed to create notification:", e);
+    } else {
+      console.warn("[Reconciliation] ADMIN_PROFILE_ID not set; operator notification was not created");
     }
   }
 

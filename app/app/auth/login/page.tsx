@@ -52,7 +52,7 @@ function LoginForm() {
 
       toast.success("Đăng nhập thành công!");
       router.refresh();
-      router.replace(canOpenAdmin(result.data!.role) ? "/admin" : redirectTo);
+      router.replace(result.data!.requiresPasswordChange ? "/change-password" : canOpenAdmin(result.data!.role) ? "/admin" : redirectTo);
     } catch (err) {
       console.error("Login submit error:", err);
       const errorMsg = "Không thể đăng nhập. Vui lòng thử lại.";

@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 
-const JWT_EXPIRES_IN_SECONDS = Number.parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? "604800", 10);
+const JWT_EXPIRES_IN_SECONDS = Number.parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? "28800", 10);
 
 export function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -16,11 +16,12 @@ export type JwtPayload = {
   userId: string;
   email: string;
   role: string;
+  sessionId: string;
   sessionVersion?: number;
 };
 
 export function generateToken(payload: JwtPayload, expiresInSeconds?: number): string {
-  const expiresIn = expiresInSeconds || JWT_EXPIRES_IN_SECONDS;
+  const expiresIn = expiresInSeconds ?? JWT_EXPIRES_IN_SECONDS;
   return jwt.sign(payload, getJwtSecret(), { expiresIn });
 }
 

@@ -12,20 +12,14 @@
 import { Worker, Job } from "bullmq";
 import { publishBidEvent } from "@/src/lib/pubsub";
 import { enqueueNotification } from "@/src/lib/queue";
-import type { BidSideEffectJob } from "@/src/lib/queue";
+import { BidSideEffectJobSchema, JOB_NAMES, QUEUE_NAMES, type BidSideEffectJob } from "@/src/lib/queue";
+import { getBullMqConnection } from "@/src/lib/redis";
 import { prisma } from "@/src/lib/prisma";
 import { NotificationType } from "@prisma/client";
 
-const workerConnection = {
-  host: process.env.REDIS_HOST ?? "localhost",
-  port: Number(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD ?? undefined,
-  db: Number(process.env.REDIS_DB) || 0,
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-};
 async function processBidSideEffects(job: Job<BidSideEffectJob>): Promise<void> {
-  const data = job.data;
+  if (job.name !== JOB_NAMES.PROCESS_BID) throw new Error(`Unsupported job: ${job.name}`);
+  const data = BidSideEffectJobSchema.parse(job.data);
 
   // 1. Publish realtime event via Redis Pub/Sub
   await publishBidEvent({
@@ -92,25 +86,16 @@ async function processBidSideEffects(job: Job<BidSideEffectJob>): Promise<void> 
 
 // ─── Start Worker ────────────────────────────────────────────────────────────
 
-const worker = new Worker("bid-side-effects", processBidSideEffects, {
-  connection: workerConnection,
-  concurrency: 10,
-  limiter: {
-    max: 100,
-    duration: 1000,
-  },
-});
-
-worker.on("completed", (job) => {
-  console.log(`[BidWorker] Job ${job.id} completed`);
-});
-
-worker.on("failed", (job, err) => {
-  console.error(`[BidWorker] Job ${job?.id} failed:`, err.message);
-});
-
-worker.on("error", (err) => {
-  console.error("[BidWorker] Worker error:", err.message);
-});
-
-console.log("[BidWorker] Started. Waiting for jobs...");
+export function createBidWorker(): Worker<BidSideEffectJob> {
+  const worker = new Worker<BidSideEffectJob>(QUEUE_NAMES.BID_SIDE_EFFECTS, processBidSideEffects, {
+    connection: getBullMqConnection(),
+    prefix: process.env.QUEUE_PREFIX ?? "autobid",
+    concurrency: Number(process.env.BID_WORKER_CONCURRENCY ?? "10"),
+    autorun: false,
+    limiter: { max: 100, duration: 1000 },
+  });
+  worker.on("completed", (job) => console.info(JSON.stringify({ event: "job_completed", queue: QUEUE_NAMES.BID_SIDE_EFFECTS, jobId: job.id })));
+  worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job_failed", queue: QUEUE_NAMES.BID_SIDE_EFFECTS, jobId: job?.id, message: error.message })));
+  worker.on("error", (error) => console.error(JSON.stringify({ event: "worker_error", queue: QUEUE_NAMES.BID_SIDE_EFFECTS, message: error.message })));
+  return worker;
+}

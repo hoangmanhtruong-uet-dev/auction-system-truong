@@ -16,8 +16,11 @@ async function finalize(request: NextRequest) {
   return NextResponse.json({ ok: true, ...result });
 }
 
-export async function GET(request: NextRequest) {
-  return finalize(request);
+export async function GET() {
+  return NextResponse.json(
+    { ok: false, error: "Method not allowed" },
+    { status: 405, headers: { Allow: "POST" } },
+  );
 }
 
 export async function POST(request: NextRequest) {

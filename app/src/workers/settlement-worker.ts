@@ -1,98 +1,56 @@
-/**
- * Worker: Settlement Processing
- *
- * Picks jobs from "settlement" queue and runs the full settleAuction pipeline:
- * freeze → settle → split (platform fee + seller payout) → mark PAID.
- *
- * Run standalone: `npx tsx app/src/workers/settlement-worker.ts`
- */
+import { Job, Worker } from "bullmq";
 
-import { Worker } from "bullmq";
-import { prisma } from "@/src/lib/prisma";
-import { settleAuction } from "@/src/lib/settlement";
 import { processForfeitAuction } from "@/src/lib/auction-lifecycle";
-import type { ForfeitJob, SettlementJob } from "@/src/lib/queue";
+import {
+  ForfeitJobSchema,
+  JOB_NAMES,
+  QUEUE_NAMES,
+  SettlementJobSchema,
+  type ForfeitJob,
+  type SettlementJob,
+} from "@/src/lib/queue";
+import { prisma } from "@/src/lib/prisma";
+import { getBullMqConnection } from "@/src/lib/redis";
+import { settleAuction } from "@/src/lib/settlement";
 
-const workerConnection = {
-  host: process.env.REDIS_HOST ?? "localhost",
-  port: Number(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD ?? undefined,
-  db: Number(process.env.REDIS_DB) || 0,
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-};
+type FinancialJob = SettlementJob | ForfeitJob;
 
-async function processSettlement(job: { data: SettlementJob }): Promise<void> {
-  const { auctionId, winnerProfileId, sellerProfileId, finalPrice } = job.data;
+async function processFinancialJob(job: Job<FinancialJob>): Promise<void> {
+  if (process.env.FINANCIAL_OPERATIONS_ENABLED !== "true") {
+    throw new Error("Financial operations are disabled; settlement job was not executed");
+  }
 
-  console.log(`[SettlementWorker] Starting settlement for auction ${auctionId}`);
-
-  const result = await prisma.$transaction(async (tx) => {
-    return settleAuction(
-      auctionId,
-      winnerProfileId,
-      sellerProfileId,
-      BigInt(finalPrice),
-      tx as any,
+  if (job.name === JOB_NAMES.PROCESS_SETTLEMENT) {
+    const data = SettlementJobSchema.parse(job.data);
+    const result = await prisma.$transaction((tx) =>
+      settleAuction(data.auctionId, data.winnerProfileId, data.sellerProfileId, BigInt(data.finalPrice), tx),
     );
-  });
-
-  if (!result.ok) {
-    if (result.code === "DUPLICATE_SETTLEMENT") {
-      console.warn(`[SettlementWorker] Auction ${auctionId} has already been settled (duplicate job). Marking as success.`);
-      return;
+    if (!result.ok && result.code !== "DUPLICATE_SETTLEMENT") {
+      throw new Error(`Settlement failed (${result.code})`);
     }
-    throw new Error(`Settlement failed for auction ${auctionId}: ${result.message}`);
+    return;
   }
 
-  console.log(
-    `[SettlementWorker] Settled auction ${auctionId}: ` +
-    `fee=${result.data.platformFee}, sellerPayout=${result.data.sellerPayout}`,
-  );
+  if (job.name === JOB_NAMES.PROCESS_FORFEIT) {
+    const data = ForfeitJobSchema.parse(job.data);
+    const result = await prisma.$transaction((tx) => processForfeitAuction(data.auctionId, tx));
+    if ("success" in result && result.success === false) throw new Error(`Forfeit failed (${result.code})`);
+    return;
+  }
+
+  throw new Error(`Unsupported job: ${job.name}`);
 }
 
-async function processForfeit(job: { data: ForfeitJob }): Promise<void> {
-  const { auctionId } = job.data;
-  console.log(`[SettlementWorker] Processing forfeit for auction ${auctionId}`);
-
-  const result = await prisma.$transaction(async (tx) => {
-    return processForfeitAuction(auctionId, tx);
+export function createSettlementWorker(): Worker<FinancialJob> {
+  const worker = new Worker<FinancialJob>(QUEUE_NAMES.SETTLEMENT, processFinancialJob, {
+    connection: getBullMqConnection(),
+    prefix: process.env.QUEUE_PREFIX ?? "autobid",
+    concurrency: Number(process.env.SETTLEMENT_WORKER_CONCURRENCY ?? "1"),
+    autorun: false,
+    limiter: { max: 5, duration: 1000 },
   });
-
-  if (!result || (result as any).code) {
-    throw new Error(`Forfeit failed for auction ${auctionId}: ${(result as any).message}`);
-  }
-
-  console.log(`[SettlementWorker] Forfeited auction ${auctionId}`);
+  worker.on("completed", (job) => console.info(JSON.stringify({ event: "job_completed", queue: QUEUE_NAMES.SETTLEMENT, jobId: job.id })));
+  worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job_failed", queue: QUEUE_NAMES.SETTLEMENT, jobId: job?.id, auctionId: job?.data.auctionId, message: error.message })));
+  worker.on("error", (error) => console.error(JSON.stringify({ event: "worker_error", queue: QUEUE_NAMES.SETTLEMENT, message: error.message })));
+  return worker;
 }
-
-const worker = new Worker("settlement", async (job) => {
-  switch (job.name) {
-    case "process-settlement":
-      await processSettlement(job as any);
-      break;
-    case "process-forfeit":
-      await processForfeit(job as any);
-      break;
-    default:
-      throw new Error(`Unknown job name: ${job.name}`);
-  }
-}, {
-  connection: workerConnection,
-  concurrency: 5,
-  limiter: { max: 20, duration: 1000 },
-});
-
-worker.on("completed", (job) => {
-  console.log(`[SettlementWorker] Job ${job?.id} completed`);
-});
-
-worker.on("failed", (job, err) => {
-  console.error(`[SettlementWorker] Job ${job?.id} failed:`, err.message);
-});
-
-worker.on("error", (err) => {
-  console.error("[SettlementWorker] Worker error:", err.message);
-});
-
-console.log("[SettlementWorker] Started. Waiting for settlement jobs...");
