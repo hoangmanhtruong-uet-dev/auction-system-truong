@@ -1,42 +1,41 @@
 "use client";
 
 import * as React from "react";
-import { Menu, Plus, Search, User } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  SidebarTrigger,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { AuthStatusClient } from "./auth-status-client";
 
 export function LuxuryHeader() {
   const pathname = usePathname();
-  const [isSearchFocused, setIsSearchFocused] = React.useState(false);
-
   const isAuthPage = pathname.startsWith("/auth");
-  const isHomepage = pathname === "/";
-  const isDashboardPage = pathname.startsWith("/auctions") || pathname.startsWith("/products") || pathname.startsWith("/inventory") || pathname.startsWith("/profile") || pathname.startsWith("/admin");
 
   if (isAuthPage) {
     return (
-      <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-black/40 backdrop-blur-md px-6">
-        <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-white font-bold shadow-lg shadow-amber-500/20">
-              A
+      <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/10 bg-neutral-950/90 px-4 backdrop-blur-md md:px-6">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500 font-black text-black shadow-md shadow-amber-500/20">
+              <span className="text-xl leading-none">A</span>
             </div>
-            <span className="text-lg font-bold text-white tracking-tight">AutoBid.vn</span>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold leading-none tracking-tight text-white">
+                AutoBid<span className="text-amber-400">.vn</span>
+              </span>
+              <span className="text-[10px] font-semibold tracking-wider text-amber-500/80">
+                LUXURY AUCTION
+              </span>
+            </div>
           </Link>
         </div>
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-white">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" asChild className="text-neutral-300 hover:bg-white/5 hover:text-white">
             <Link href="/auth/login">Đăng nhập</Link>
           </Button>
-          <Button size="sm" asChild className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-lg shadow-amber-500/20">
+          <Button size="sm" asChild className="rounded-lg bg-amber-500 font-semibold text-black hover:bg-amber-400">
             <Link href="/auth/register">Đăng ký</Link>
           </Button>
         </div>
@@ -45,35 +44,41 @@ export function LuxuryHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-black/40 backdrop-blur-md px-4 md:px-6">
-      <div className="flex items-center gap-4 flex-1">
-        <SidebarTrigger className="-ml-1" />
-        {!isHomepage && (
-          <div className={`relative max-w-xs transition-all duration-300 ${isSearchFocused ? "w-48" : "w-0 opacity-0"}`}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Tìm kiếm..."
-              className="h-9 pl-9 bg-white/5 border-white/10 text-sm focus:border-amber-500/50 focus:ring-amber-500/20"
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-            />
-          </div>
-        )}
-      </div>
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-neutral-950/90 px-4 backdrop-blur-md md:px-6">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 py-3">
+        <div className="flex items-center gap-3">
+          <SidebarTrigger className="-ml-1 text-neutral-400 hover:text-white md:hidden" />
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500 font-black text-black shadow-md shadow-amber-500/20">
+              <span className="text-xl leading-none">A</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold leading-none tracking-tight text-white">
+                AutoBid<span className="text-amber-400">.vn</span>
+              </span>
+              <span className="text-[10px] font-semibold tracking-wider text-amber-500/80">
+                LUXURY AUCTION
+              </span>
+            </div>
+          </Link>
+        </div>
 
-      <div className="flex items-center gap-2 md:gap-4">
-        {isDashboardPage && (
-          <>
-            <Button variant="outline" size="sm" asChild className="hidden md:flex h-9 border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-sm">
-              <Link href="/auctions/new">
-                <Plus className="mr-2 size-4" />
-                Tạo phiên
-              </Link>
-            </Button>
-            <div className="h-8 w-px bg-white/10 mx-1 hidden md:block" />
-          </>
-        )}
-        <AuthStatusClient />
+        {/* Global Header Search Bar */}
+        <form action="/auctions" className="hidden flex-1 max-w-md items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1 pl-3 text-white focus-within:border-amber-500/50 md:flex">
+          <Search className="size-4 shrink-0 text-neutral-400" />
+          <input
+            name="q"
+            className="w-full bg-transparent text-xs text-white placeholder-neutral-500 outline-none"
+            placeholder="Tìm đồng hồ, xe, bất động sản..."
+          />
+          <button type="submit" className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-amber-400">
+            Tìm kiếm
+          </button>
+        </form>
+
+        <div className="flex items-center gap-3">
+          <AuthStatusClient />
+        </div>
       </div>
     </header>
   );
